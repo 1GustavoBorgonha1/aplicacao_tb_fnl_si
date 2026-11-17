@@ -200,6 +200,10 @@ Os avisos da IDE sobre `env.IMAGE_PREFIX` no workflow são falsos positivos (a v
 
 ## Pendências (estado em 2026-11-17)
 
+> Plano combinado com o usuário: fases 0–5 (Sonar → Dependabot em grupos → spec 006 → testes do frontend → proteção da `main`). **AWS (fase 6) adiada** até o usuário explicar o contexto.
+> Máquina nova (Windows): Node 26 e Docker Desktop instalados pelo usuário; `gh` ainda precisa ser instalado (`winget install GitHub.cli`).
+> **Plano atual:** `C:/Users/gusta/.claude/plans/ajuste-o-plano-e-harmonic-hare.md` (K3s + Terraform do colega em `infra/terraform/`, RDS **PostgreSQL**, Docker Hub). Feito: `sonar.projectKey` trocada na `main` (falta o usuário criar os secrets do Sonar no repositório); WSL 3.0.5 reinstalado (precisa reiniciar); `infra/database/` (schema para o colega) criado nesta branch, sem commit.
+
 ### 1. Pipeline vermelho: falta configurar o SonarQube ⚠️
 No primeiro push, os jobs **Testes e lint** e **Auditoria de dependências** passaram (59 testes no GitHub). O job **SonarQube** falhou em "Verificar configuração" porque os secrets não existem; por isso **build e deploy não rodaram**. É o gate funcionando, não um bug. Para resolver (o usuário precisa fazer; exige login no navegador):
 1. Entrar em https://sonarcloud.io com a conta do GitHub → *Analyze new project* → importar `aplicacao_tb_fnl_si`.
@@ -224,5 +228,5 @@ Seguir `docs/deploy-aws.md` (VPC, SGs, RDS, S3 + CloudFront, IAM Role, 2 EC2s, A
 
 ### 5. Itens menores
 - Proteção da branch `main` no GitHub (exigir CI verde antes de merge): ainda não configurada.
-- Trocar a senha do admin em produção (não há tela de troca de senha; hoje só recriando via seed ou SQL). Pode virar a spec `006`.
+- ~~Tela de troca de senha~~ → **spec 006 implementada na branch `feat/006-troca-senha`** (ainda sem commit; falta rodar os testes do backend com Docker e abrir o PR).
 - O frontend não tem testes automatizados (a cobertura do SonarQube exclui `frontend/**`).
