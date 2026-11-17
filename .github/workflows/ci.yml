@@ -120,7 +120,7 @@ jobs:
 
       # qualitygate.wait=true faz o job FALHAR se o Quality Gate for reprovado → bloqueia build/deploy.
       - name: Análise SonarQube
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
