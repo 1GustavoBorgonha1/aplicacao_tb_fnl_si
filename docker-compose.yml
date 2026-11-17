@@ -1,0 +1,75 @@
+# MarmiFit — ambiente local.
+#   cp .env.example .env   (e edite os segredos)
+#   docker compose up --build   →  http://localhost:8080
+#
+# Redes (espelham a VPC da AWS — Aula 12):
+#   front-net : frontend <-> backend            (≈ subnet pública)
+#   back-net  : backend  <-> db, internal: true (≈ subnet privada, sem saída/entrada externa)
+
+name: marmifit
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-marmifit}
+      POSTGRES_USER: ${POSTGRES_USER:-marmifit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks: [back-net]
+    # Sem "ports": o banco NÃO é acessível a partir do host (mínimo privilégio).
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    security_opt: ["no-new-privileges:true"]
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-marmifit}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-marmifit}
+      DATABASE_SSL: "false"
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?defina ADMIN_EMAIL no .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?defina ADMIN_PASSWORD no .env}
+      STORAGE_DRIVER: local
+      UPLOAD_DIR: /app/uploads
+      TRUST_PROXY: "1"
+    volumes:
+      - uploads:/app/uploads       # "S3 local": imagens persistem no volume
+    networks: [front-net, back-net]
+    read_only: true                # sistema de arquivos imutável (hardening)
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:8080"   # única porta exposta no host
+    networks: [front-net]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+networks:
+  front-net:
+  back-net:
+    internal: true
+
+volumes:
+  db-data:
+  uploads:

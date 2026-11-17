@@ -1,0 +1,29 @@
+# Testes de integração do backend contra um Postgres descartável.
+#   docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from tests
+#   docker compose -f docker-compose.test.yml down -v
+
+name: marmifit-test
+
+services:
+  db-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: marmifit_test
+      POSTGRES_USER: marmifit
+      POSTGRES_PASSWORD: marmifit
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marmifit -d marmifit_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  tests:
+    build:
+      context: ./backend
+      target: test
+    depends_on:
+      db-test:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://marmifit:marmifit@db-test:5432/marmifit_test

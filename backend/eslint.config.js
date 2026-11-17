@@ -1,0 +1,17 @@
+import js from '@eslint/js';
+import globals from 'globals';
+
+export default [
+  { ignores: ['coverage/**', 'node_modules/**', 'uploads/**'] },
+  js.configs.recommended,
+  {
+    languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: globals.node },
+    rules: {
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-eval': 'error',
+      'no-implied-eval': 'error',
+      'no-new-func': 'error',
+      'no-control-regex': 'off', // regex de remoção de caracteres de controle é intencional
+    },
+  },
+];

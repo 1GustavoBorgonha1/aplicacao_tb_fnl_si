@@ -1,0 +1,36 @@
+# SonarQube local (Community) para análise manual antes do push.
+#   docker compose -f docker-compose.sonar.yml up -d     →  http://localhost:9000  (admin/admin no 1º acesso)
+# Requer no host Linux:  sudo sysctl -w vm.max_map_count=524288
+# Análise: veja "SonarQube" no README.
+
+name: marmifit-sonar
+
+services:
+  sonarqube:
+    image: sonarqube:community
+    depends_on: [sonar-db]
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: sonar
+    ports:
+      - "127.0.0.1:9000:9000"   # só localhost
+    volumes:
+      - sonar-data:/opt/sonarqube/data
+      - sonar-extensions:/opt/sonarqube/extensions
+      - sonar-logs:/opt/sonarqube/logs
+
+  sonar-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: sonar
+      POSTGRES_DB: sonar
+    volumes:
+      - sonar-db:/var/lib/postgresql/data
+
+volumes:
+  sonar-data:
+  sonar-extensions:
+  sonar-logs:
+  sonar-db:

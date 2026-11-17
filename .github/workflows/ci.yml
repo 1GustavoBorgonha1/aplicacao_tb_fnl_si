@@ -1,0 +1,204 @@
+# Pipeline CI/CD da MarmiFit (constituição IV / Aula 7 — scanner de segurança no deploy).
+#
+#   test ──► sonarqube (Quality Gate) ──┐
+#   audit (npm audit) ──────────────────┴─► build (imagens → GHCR) ──► deploy (manual, AWS)
+#
+# Qualquer falha interrompe as etapas seguintes: código reprovado no SonarQube NÃO é publicado.
+#
+# Configuração no GitHub (Settings → Secrets and variables → Actions):
+#   secrets.SONAR_TOKEN        token de análise do SonarQube / SonarQube Cloud
+#   secrets.SONAR_HOST_URL     ex.: https://sonarcloud.io  ou  http://<ip-da-ec2>:9000
+#   vars.SONAR_ORGANIZATION    (só SonarQube Cloud) chave da organização
+#   vars.DEPLOY_ENABLED        "true" quando a AWS estiver pronta (habilita o job deploy)
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Mínimo privilégio para o GITHUB_TOKEN; cada job pede só o que precisa.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Testes e lint
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: marmifit_test
+          POSTGRES_USER: marmifit
+          POSTGRES_PASSWORD: marmifit
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U marmifit" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgres://marmifit:marmifit@localhost:5432/marmifit_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Backend — instalar
+        working-directory: backend
+        run: npm ci
+
+      - name: Backend — lint
+        working-directory: backend
+        run: npm run lint
+
+      - name: Backend — testes com cobertura
+        working-directory: backend
+        run: npm run test:coverage
+
+      - name: Frontend — build
+        working-directory: frontend
+        run: npm ci && npm run build
+
+      - name: Publicar cobertura para o SonarQube
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: backend/coverage/lcov.info
+          retention-days: 7
+
+  audit:
+    name: Auditoria de dependências
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Falha se houver vulnerabilidade ALTA ou CRÍTICA em dependências de produção.
+      - name: npm audit — backend
+        working-directory: backend
+        run: npm audit --omit=dev --audit-level=high
+      - name: npm audit — frontend
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+
+  sonarqube:
+    name: SonarQube (SAST + Quality Gate)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # histórico completo melhora a análise de código novo
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          path: backend/coverage
+
+      - name: Verificar configuração
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ] || [ -z "$SONAR_HOST_URL" ]; then
+            echo "::error::Configure os secrets SONAR_TOKEN e SONAR_HOST_URL (veja README → SonarQube)."
+            exit 1
+          fi
+
+      # qualitygate.wait=true faz o job FALHAR se o Quality Gate for reprovado → bloqueia build/deploy.
+      - name: Análise SonarQube
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
+            ${{ vars.SONAR_ORGANIZATION && format('-Dsonar.organization={0}', vars.SONAR_ORGANIZATION) || '' }}
+
+  build:
+    name: Build das imagens Docker
+    needs: [sonarqube, audit]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # publicar no GitHub Container Registry
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Nome das imagens (minúsculo)
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login no GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Backend
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          target: runtime
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}/backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}/frontend:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+  deploy:
+    name: Deploy na AWS (EC2)
+    needs: build
+    if: github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    # Environment "production" permite exigir aprovação manual (Settings → Environments).
+    environment: production
+    steps:
+      - name: Deploy via SSH (backend na EC2 privada → frontend na EC2 pública)
+        # Secrets: EC2_SSH_KEY, EC2_USER, EC2_PUBLIC_HOST (IP/DNS público), EC2_PRIVATE_HOST (IP privado).
+        # A EC2 privada é alcançada pela pública (ProxyJump / bastion). Em cada máquina deve existir
+        # /opt/marmifit com o compose correspondente de deploy/ e o .env (ver docs/deploy-aws.md).
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          SSH_USER: ${{ secrets.EC2_USER }}
+          PUB: ${{ secrets.EC2_PUBLIC_HOST }}
+          PRIV: ${{ secrets.EC2_PRIVATE_HOST }}
+          TAG: ${{ github.sha }}
+        run: |
+          install -m 700 -d ~/.ssh && install -m 600 /dev/null ~/.ssh/id_deploy && echo "$SSH_KEY" > ~/.ssh/id_deploy
+          OPTS="-i $HOME/.ssh/id_deploy -o StrictHostKeyChecking=accept-new"
+          ssh $OPTS -o ProxyCommand="ssh $OPTS -W %h:%p $SSH_USER@$PUB" "$SSH_USER@$PRIV" \
+            "cd /opt/marmifit && export TAG=$TAG && docker compose -f compose.backend.yml pull && docker compose -f compose.backend.yml up -d"
+          ssh $OPTS "$SSH_USER@$PUB" \
+            "cd /opt/marmifit && export TAG=$TAG && docker compose -f compose.frontend.yml pull && docker compose -f compose.frontend.yml up -d"
+          rm -f ~/.ssh/id_deploy
