@@ -38,7 +38,10 @@ export default function Layout() {
                     {label}
                   </NavLink>
                 ))}
-                <span className="muted hide-sm">{user.nome}</span>
+                <NavLink to="/conta" end title="Minha conta">
+                  <span className="hide-sm">{user.nome}</span>
+                  <span className="show-sm">Conta</span>
+                </NavLink>
                 <button className="btn btn-ghost" onClick={sair}>
                   Sair
                 </button>

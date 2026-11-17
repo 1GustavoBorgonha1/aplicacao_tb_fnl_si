@@ -22,6 +22,7 @@ A MarmiFit (projeto de Empreendedorismo & Inovação) é uma plataforma que cone
 | [003](../003-marmitas/spec.md) | Catálogo de marmitas com imagem |
 | [004](../004-pedidos/spec.md) | Pedidos para retirada |
 | [005](../005-admin/spec.md) | Painel administrativo |
+| [006](../006-troca-senha/spec.md) | Troca de senha (todos os perfis) |
 
 ## 4. Requisitos não funcionais
 - **RNF-01 — Conteinerização:** cada serviço roda em um container Docker; ambiente local sobe com um único `docker compose up`.

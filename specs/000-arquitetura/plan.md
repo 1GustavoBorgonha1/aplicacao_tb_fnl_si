@@ -55,7 +55,7 @@ Arquivos em [deploy/](../../deploy/) e roteiro manual em [docs/deploy-aws.md](..
 ## 4. Modelo de dados
 
 ```
-users (id, nome, email UNIQUE, senha_hash, role[admin|restaurante|cliente], ativo, criado_em)
+users (id, nome, email UNIQUE, senha_hash, role[admin|restaurante|cliente], ativo, token_versao, criado_em)
   │1
   │1
 restaurants (id, user_id UNIQUE→users, nome, cnpj UNIQUE, telefone, endereco, horario,
@@ -91,3 +91,4 @@ Valores monetários sempre em **centavos (inteiro)**, sem ponto flutuante.
 - **ADR-08 — Migrations SQL próprias.** Um runner de ~30 linhas executa `migrations/*.sql` em ordem no startup; dispensa ORM.
 - **ADR-09 — Frontend e backend em EC2s separadas na AWS.** Atende a Aula 12 (máquina pública expõe, privada hospeda serviços); o backend nunca recebe tráfego direto da internet.
 - **ADR-10 — zod 4.** O `npm audit` do pipeline barrou o zod 3 (GHSA-mrhx-c7xc-m3w5, severidade alta); migrado para zod 4 (`z.flattenError`).
+- **ADR-11 — Revogação de sessão por versão de token.** O JWT continua *stateless*, mas carrega a claim `tv`, comparada com `users.token_versao` no `requireAuth` (que já consulta o banco — ADR-04). Trocar a senha incrementa a versão e derruba todas as sessões anteriores sem precisar de *blacklist* de tokens (spec 006).

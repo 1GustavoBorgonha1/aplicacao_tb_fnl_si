@@ -12,6 +12,7 @@ import MinhaEmpresa from './pages/restaurante/MinhaEmpresa.jsx';
 import MinhasMarmitas from './pages/restaurante/MinhasMarmitas.jsx';
 import PedidosRecebidos from './pages/restaurante/PedidosRecebidos.jsx';
 import Painel from './pages/admin/Painel.jsx';
+import MinhaConta from './pages/MinhaConta.jsx';
 
 const as = (role, el) => <Protected role={role}>{el}</Protected>;
 
@@ -36,6 +37,9 @@ export default function App() {
 
         {/* Spec 005 — admin */}
         <Route path="admin" element={as('admin', <Painel />)} />
+
+        {/* Spec 006 — qualquer perfil autenticado */}
+        <Route path="conta" element={as(undefined, <MinhaConta />)} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

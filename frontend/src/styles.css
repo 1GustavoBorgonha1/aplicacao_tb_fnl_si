@@ -168,9 +168,11 @@ th { font-size: 0.8rem; text-transform: uppercase; color: var(--muted); }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 .stat { display: grid; gap: 4px; }
 .stat strong { font-size: 2rem; }
+.show-sm { display: none; }
 
 @media (max-width: 800px) {
   .split { grid-template-columns: 1fr; }
   .cart { position: static; }
   .hide-sm { display: none; }
+  .show-sm { display: inline; }
 }

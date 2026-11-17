@@ -25,6 +25,7 @@ O cliente escolhe um restaurante, vê o catálogo, faz o pedido e **retira no lo
 | **Cliente** | Escolhe um restaurante → vê o catálogo (filtro por categoria) → monta o pedido com horário de retirada → acompanha/cancela |
 | **Restaurante** | Edita os dados da empresa → cadastra marmitas com foto, preço e informação nutricional → atende os pedidos (recebido → em preparo → pronto → retirado) |
 | **Admin** | Aprova/bloqueia empresas, ativa/desativa usuários, vê todos os pedidos e marmitas |
+| **Todos** | Em **Minha conta** trocam a própria senha (encerra as outras sessões abertas) |
 
 Empresas novas ficam **pendentes** até o admin aprovar; só então aparecem para os clientes.
 
@@ -79,6 +80,7 @@ specs/
   003-marmitas/
   004-pedidos/
   005-admin/
+  006-troca-senha/
   _template/         modelo para novas funcionalidades
 ```
 
@@ -161,7 +163,7 @@ Base `/api`, JSON, `Authorization: Bearer <token>`. Erros: `{ "erro": "...", "de
 | Método | Rota | Perfil |
 |---|---|---|
 | POST | `/auth/register/cliente` · `/auth/register/restaurante` · `/auth/login` | público |
-| GET | `/auth/me` | autenticado |
+| GET | `/auth/me` · PATCH `/auth/senha` | autenticado |
 | GET | `/restaurants` · `/restaurants/:id` · `/restaurants/:id/meals?categoria=` | público |
 | GET/PUT | `/restaurants/me` | restaurante |
 | GET | `/meals/mine` · POST `/meals` · PUT/DELETE `/meals/:id` | restaurante |
