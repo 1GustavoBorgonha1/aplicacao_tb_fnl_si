@@ -223,5 +223,5 @@ O Quality Gate do SonarCloud avalia o **código novo** (cobertura ≥ 80%, sem b
 - **AWS (colega):** Terraform em `infra/terraform/` seguindo `infra/README.md`; ao receber os outputs, preencher os `TROQUE` de `k8s/overlays/aws` e fazer o primeiro deploy (`docs/deploy-aws.md`).
 - **SonarQube:** achado "Use VARCHAR2 instead of CHAR" em `001_init.sql` é falso positivo (regra Oracle) — marcar como *False Positive* no SonarCloud. Achados do `ci.yml` (senha do Postgres de teste, `--ignore-scripts`, actions sem SHA fixo) ficam com a mudança da pipeline.
 - **Dependabot:** PRs majors abertas; avaliar em grupos (Actions → Docker → backend → frontend), uma por vez, com lint/testes/build/audit. Node 26 já é LTS (out/2026) → padronizar Docker, CI e `engines`.
-- **Testes do frontend**: existem (ADR-16, `frontend/tests/`), mas cobrem só os módulos centrais (api, auth, Login, Minha conta, PedidoCard). Tela nova ou alterada precisa de teste: o Quality Gate exige 80% de cobertura no código novo também no frontend.
+- **Testes do frontend**: 54 testes (ADR-16, `frontend/tests/`), cobertura ~92% — todas as telas têm teste. Tela nova ou alterada precisa de teste: o Quality Gate exige 80% no código novo também no frontend.
 - **Proteção da `main`:** exigir PR e checks verdes (sem exigir aprovação de outra pessoa).
