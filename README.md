@@ -162,13 +162,18 @@ A troca é **só por configuração** (variáveis de ambiente / ConfigMap e Secr
 [.github/workflows/ci.yml](.github/workflows/ci.yml):
 
 ```
- push/PR ─► test (lint + 59 testes + cobertura + build front) ─► sonarqube (Quality Gate) ─┐
-        └─► audit (npm audit --audit-level=high) ──────────────────────────────────────────┴─► build (imagens → GHCR) ─► deploy (EC2)
+ push/PR ─► test (lint + testes + cobertura + build front) ─► sonarqube (Quality Gate) ─┐
+        ├─► audit (npm audit --audit-level=high) ────────────────────────────────────────┼─► build (docker build + push Docker Hub) ─► deploy (kubectl set image no K3s)
+        └─► infra (manifests k8s + terraform fmt/validate) ──────────────────────────────┘
 ```
-- **SonarQube** faz SAST (vulnerabilidades, *security hotspots*, segredos no código), qualidade e cobertura. Com `sonar.qualitygate.wait=true`, **Quality Gate reprovado = pipeline vermelho = nada é publicado**.
-- **npm audit** barra dependências com CVE alta/crítica. *Caso real deste projeto:* barrou o `zod 3` (GHSA-mrhx-c7xc-m3w5) e motivou a migração para o zod 4.
-- **Dependabot** abre PRs semanais de atualização (npm, Docker e Actions).
-- **Deploy** só roda na `main`, com `vars.DEPLOY_ENABLED=true` e aprovação manual no environment `production`.
+- **SonarQube** faz SAST (vulnerabilidades, *security hotspots*, segredos no código), qualidade e cobertura do código da aplicação e dos manifests do Kubernetes. Com `sonar.qualitygate.wait=true`, **Quality Gate reprovado = pipeline vermelho = nada é publicado**. *Casos reais deste projeto:* o gate barrou um modelo de Secret com senha em YAML e a senha fixa do banco de teste do CI.
+- **npm audit** barra dependências com CVE alta/crítica. *Caso real:* barrou o `zod 3` (GHSA-mrhx-c7xc-m3w5) e motivou a migração para o zod 4.
+- **infra** valida os overlays do Kubernetes e, quando existir `infra/terraform/`, roda `terraform fmt -check` e `terraform validate`.
+- **build** gera as imagens `gustavoborgonha/marmifit-backend` e `gustavoborgonha/marmifit-frontend` (tags `latest` e SHA do commit). Em PR só compila; o push no **Docker Hub** acontece só na `main`.
+- **deploy** roda `kubectl set image` + `rollout status` no master do K3s via **AWS SSM** (o master fica na subnet privada: sem SSH e sem porta aberta), com credenciais temporárias via **GitHub OIDC** (sem access key). Só roda na `main`, com `vars.DEPLOY_ENABLED=true` e aprovação manual no environment `production`.
+- **Supply chain:** actions fixadas pelo SHA do commit, `npm ci --ignore-scripts`, `permissions` mínimas do `GITHUB_TOKEN`. **Dependabot** abre PRs semanais (npm, Docker e Actions).
+
+Secrets/variables usados: `SONAR_TOKEN`, `SONAR_HOST_URL`, `SONAR_ORGANIZATION`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` e, para o deploy, `DEPLOY_ENABLED`, `AWS_REGION`, `AWS_DEPLOY_ROLE_ARN`, `K3S_MASTER_INSTANCE_ID`.
 
 ### Configurar o SonarQube no GitHub
 Os runners do GitHub não alcançam um SonarQube rodando na sua máquina; use uma das opções:
