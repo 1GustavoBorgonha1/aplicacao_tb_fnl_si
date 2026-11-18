@@ -48,13 +48,14 @@ jobs:
         env:
           POSTGRES_DB: marmifit_test
           POSTGRES_USER: marmifit
-          # Banco descartável do CI: senha gerada por execução (nada fixo no código).
-          POSTGRES_PASSWORD: ci-${{ github.run_id }}-${{ github.run_attempt }}
+          # Banco descartável, só acessível dentro do runner e apagado ao fim do job:
+          # sem senha nenhuma no código (nada a vazar).
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U marmifit" --health-interval 5s --health-timeout 3s --health-retries 10
     env:
-      DATABASE_URL: postgres://marmifit:ci-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/marmifit_test
+      DATABASE_URL: postgres://marmifit@localhost:5432/marmifit_test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
