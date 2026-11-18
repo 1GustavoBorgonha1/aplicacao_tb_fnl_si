@@ -26,12 +26,12 @@ Pedido: `recebido → em_preparo → pronto_retirada → retirado`, ou `cancelad
 - **Orquestração: K3s** com manifests Kustomize em `k8s/` (ADR-13). **Registro: Docker Hub** (ADR-14). **Deploy: SSM Run Command + GitHub OIDC** (ADR-15) — sem SSH e sem access key.
 - **Banco é PostgreSQL** (RDS PostgreSQL 16, porta 5432). O diagrama original dizia MySQL; o usuário decidiu manter Postgres.
 - Imagens em **pasta local** no dev (`STORAGE_DRIVER=local`) e **S3** na AWS; Postgres em container no dev e **RDS** na AWS. A troca é **só por variável de ambiente**, nunca por mudança de código.
-- Stack: Node 22 + Express 5 (backend), React 19 + Vite + React Router 7 (frontend), Postgres 16, zod 4.
+- Stack: Node 26 LTS + Express 5 (backend), React 19 + Vite + React Router 7 (frontend), Postgres 16, zod 4.
 - Documentação e textos da UI em **português**.
 
 ## Começando em uma máquina nova
 
-Pré-requisitos: Git, Docker + Docker Compose v2 e Node 22 (Node só é necessário para rodar lint/testes fora do container). Opcional: `gh` (GitHub CLI) autenticado na conta `1GustavoBorgonha1`.
+Pré-requisitos: Git, Docker + Docker Compose v2 e Node 26 LTS (Node só é necessário para rodar lint/testes fora do container). Opcional: `gh` (GitHub CLI) autenticado na conta `1GustavoBorgonha1`.
 
 ```bash
 git clone https://github.com/1GustavoBorgonha1/aplicacao_tb_fnl_si.git marmifit

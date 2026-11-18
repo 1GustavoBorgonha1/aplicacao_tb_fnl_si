@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Backend MarmiFit — multi-stage, imagem final mínima e sem root (docs/seguranca/hardening.md).
 
-FROM node:22-alpine AS base
+FROM node:26-alpine AS base
 WORKDIR /app
 ENV NODE_ENV=production
 
