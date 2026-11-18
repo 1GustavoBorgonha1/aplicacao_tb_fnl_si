@@ -206,8 +206,9 @@ infra/                  README.md (contrato com o Terraform), database/ (schema.
 
 ## CI/CD
 
-`.github/workflows/ci.yml`: `test` (Postgres de serviço, lint, cobertura, build do front) → `sonarqube` (`sonar.qualitygate.wait=true`: gate reprovado falha o job) e `audit` → `build` → `deploy` (só na `main` com `vars.DEPLOY_ENABLED == 'true'`, environment `production`).
-**Em migração** (agente/usuário principal): build/push para o **Docker Hub** (secrets `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN`) e deploy por **SSM + OIDC** com `kubectl set image` no master do K3s, conforme `infra/README.md` §8. Confira o `ci.yml` atual antes de descrevê-lo.
+`.github/workflows/ci.yml`: `test` (Postgres + s3mock de serviço, lint, testes com cobertura do backend e do frontend, build do front) → `sonarqube` (`sonar.qualitygate.wait=true`), em paralelo com `audit` (npm audit), `infra` (overlays k8s + Terraform quando existir) e `dast` (OWASP ZAP via `.zap/dast.sh`) → `build` (Docker Hub, push só na `main`) → `deploy` (SSM + OIDC, só com `vars.DEPLOY_ENABLED == 'true'`, environment `production`).
+A `main` é protegida: PR obrigatório com os checks verdes (inclusive para o admin). Dependabot tem os secrets do Sonar na área própria (Settings → Secrets → Dependabot).
+DAST: o ZAP reprova em qualquer WARN/FAIL; exceções só em `.zap/regras.tsv` com justificativa. Para rodar local: `bash .zap/dast.sh` (relatório em `zap/`, ignorado pelo git).
 Secrets/vars do Sonar (já configurados): `SONAR_TOKEN`, `SONAR_HOST_URL`, `vars.SONAR_ORGANIZATION=1gustavoborgonha1`; project key `1GustavoBorgonha1_aplicacao_tb_fnl_si`. A "Automatic Analysis" do SonarCloud deve ficar **desligada**.
 O Quality Gate do SonarCloud avalia o **código novo** (cobertura ≥ 80%, sem bugs/vulnerabilidades novas). Arquivos de exemplo com `PASSWORD: valor` em YAML são reprovados — documente segredos como comandos (`kubectl create secret`), não como arquivos.
 

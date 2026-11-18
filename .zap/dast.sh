@@ -26,7 +26,8 @@ setfacl -m u:1000:rwx zap 2>/dev/null || true
 
 # -j: spider AJAX, a interface é uma SPA. Código de saída: 0 ok, 1 FAIL, 2 WARN, 3 erro.
 set +e
-docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" "$ZAP_IMAGE"   zap-baseline.py -t "$ALVO" -c regras.tsv -j -r relatorio-zap.html -J relatorio-zap.json "$@"
+docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" "$ZAP_IMAGE" \
+  zap-baseline.py -t "$ALVO" -c regras.tsv -j -r relatorio-zap.html -J relatorio-zap.json "$@"
 rc=$?
 set -e
 echo "ZAP terminou com código $rc (0 = sem alertas; 1 = FAIL; 2 = WARN; 3 = erro)"
