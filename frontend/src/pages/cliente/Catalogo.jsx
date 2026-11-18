@@ -4,12 +4,14 @@ import { api, errorText } from '../../api.js';
 import { Alert, Field, useLoad } from '../../components/ui.jsx';
 import { brl, CATEGORIAS } from '../../format.js';
 
-// Valor padrão do campo de retirada: daqui a 1h, no formato do <input type="datetime-local">.
-function retiradaPadrao() {
-  const d = new Date(Date.now() + 60 * 60_000);
+// Data/hora local no formato do <input type="datetime-local"> (YYYY-MM-DDTHH:MM).
+function localDaqui(min) {
+  const d = new Date(Date.now() + min * 60_000);
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 16);
 }
+// Valor padrão do campo de retirada: daqui a 1h.
+const retiradaPadrao = () => localDaqui(60);
 
 // Spec 003 (catálogo) + Spec 004 (pedido para retirada).
 export default function Catalogo() {
@@ -142,8 +144,20 @@ export default function Catalogo() {
             <p className="cart-total">
               Total estimado <strong>{brl(total)}</strong>
             </p>
-            <Field label="Horário de retirada" hint="Entre 30 minutos e 7 dias a partir de agora.">
-              <input type="datetime-local" required value={retirada} onChange={(e) => setRetirada(e.target.value)} />
+            <Field
+              label="Data e hora da retirada"
+              hint={`Entre 30 minutos e 7 dias a partir de agora${
+                rest.data?.restaurante.horario ? `, no horário do restaurante: ${rest.data.restaurante.horario}` : ''
+              }.`}
+            >
+              <input
+                type="datetime-local"
+                required
+                min={localDaqui(30)}
+                max={localDaqui(7 * 24 * 60)}
+                value={retirada}
+                onChange={(e) => setRetirada(e.target.value)}
+              />
             </Field>
             <Field label="Observação">
               <textarea maxLength={300} rows={2} value={observacao} onChange={(e) => setObservacao(e.target.value)} />

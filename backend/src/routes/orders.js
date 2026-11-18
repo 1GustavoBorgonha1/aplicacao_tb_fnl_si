@@ -7,6 +7,7 @@ import { audit } from '../logger.js';
 import { requireAuth, requireRole } from '../middlewares/auth.js';
 import { loadRestaurant } from '../middlewares/restaurant.js';
 import { parse, parseId, texto } from '../validate.js';
+import { dentroDoHorario, formatarHorario } from '../horario.js';
 
 export const STATUS = ['recebido', 'em_preparo', 'pronto_retirada', 'retirado', 'cancelado'];
 
@@ -70,6 +71,18 @@ export function ordersRouter() {
     const delta = data.retirada_em.getTime() - Date.now();
     if (delta < MIN_ANTECEDENCIA_MS || delta > MAX_ANTECEDENCIA_MS) {
       throw badRequest('Horário de retirada deve ser entre 30 minutos e 7 dias a partir de agora'); // CA-004-04
+    }
+
+    // CA-004-10 — dentro do horário de retirada do restaurante (fuso de São Paulo).
+    // Restaurante inexistente/não aprovado é tratado abaixo (CA-004-02).
+    const { rows: [rest] } = await query(
+      'SELECT dias_retirada, abre_as, fecha_as FROM restaurants WHERE id = $1',
+      [data.restaurant_id],
+    );
+    if (rest && !dentroDoHorario(data.retirada_em, rest)) {
+      throw badRequest(
+        `Fora do horário de retirada do restaurante (${formatarHorario(rest.dias_retirada, rest.abre_as, rest.fecha_as)})`,
+      );
     }
 
     // Soma quantidades se a mesma marmita vier repetida.

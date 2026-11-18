@@ -128,4 +128,49 @@ describe('Spec 004 — Pedidos', () => {
     const { r, m1 } = await cenario();
     expect((await novoPedido(r.token, { restaurant_id: r.restaurantId, retirada_em: futuro(), itens: [{ meal_id: m1.id, qtd: 1 }] })).status).toBe(403);
   });
+
+  describe('CA-004-10 janela de retirada (fuso de São Paulo)', () => {
+    // Data daqui a 2 dias, na hora pedida, no horário de Brasília (UTC-3, sem horário de verão).
+    // 2 dias à frente fica sempre entre 30 min e 7 dias (CA-004-04), qualquer que seja o dia do teste.
+    const ymd = () =>
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(Date.now() + 2 * 86_400_000));
+    const emSP = (hora) => new Date(`${ymd()}T${hora}:00-03:00`).toISOString();
+    const diaAlvo = () => new Date(`${ymd()}T12:00:00Z`).getUTCDay();
+    const pedir = (c, r, m1, hora) =>
+      novoPedido(c.token, { restaurant_id: r.restaurantId, retirada_em: emSP(hora), itens: [{ meal_id: m1.id, qtd: 1 }] });
+
+    async function configurar(r, dias) {
+      const res = await api()
+        .put('/api/restaurants/me')
+        .set(auth(r.token))
+        .send({ nome: 'Fit Horário', telefone: '47999990000', endereco: 'Rua A, 100', dias_retirada: dias, abre_as: '11:00', fecha_as: '14:00' });
+      expect(res.status).toBe(200);
+    }
+
+    it('CA-004-10 retirada dentro do dia e da janela → 201 (inclusive no horário de fechamento)', async () => {
+      const { r, m1, c } = await cenario();
+      await configurar(r, [diaAlvo()]);
+      for (const hora of ['11:00', '12:30', '14:00']) expect((await pedir(c, r, m1, hora)).status).toBe(201);
+    });
+
+    it.each(['10:59', '14:01', '20:00'])('CA-004-10 retirada às %s, fora da janela 11:00–14:00 → 400', async (hora) => {
+      const { r, m1, c } = await cenario();
+      await configurar(r, [diaAlvo()]);
+      const res = await pedir(c, r, m1, hora);
+      expect(res.status).toBe(400);
+      expect(res.body.erro).toContain('Fora do horário de retirada');
+      expect(res.body.erro).toContain('11:00–14:00');
+    });
+
+    it('CA-004-10 retirada em dia sem atendimento → 400', async () => {
+      const { r, m1, c } = await cenario();
+      await configurar(r, [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== diaAlvo()));
+      expect((await pedir(c, r, m1, '12:00')).status).toBe(400);
+    });
+
+    it('CA-004-10 restaurante sem horário configurado aceita qualquer horário válido (só CA-004-04)', async () => {
+      const { r, m1, c } = await cenario();
+      expect((await pedir(c, r, m1, '03:00')).status).toBe(201);
+    });
+  });
 });

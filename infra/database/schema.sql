@@ -1,7 +1,7 @@
 -- =============================================================================
 -- MarmiFit — schema do banco (PostgreSQL 16 / Amazon RDS for PostgreSQL)
 -- =============================================================================
--- Consolida backend/migrations/001_init.sql + 002_token_versao.sql.
+-- Consolida backend/migrations/001_init.sql + 002_token_versao.sql + 003_horario_retirada.sql.
 --
 -- IMPORTANTE: rodar este arquivo é OPCIONAL. O backend aplica as migrations
 -- sozinho no startup (backend/src/db/migrate.js, com advisory lock — seguro com
@@ -42,10 +42,20 @@ CREATE TABLE IF NOT EXISTS restaurants (
   cnpj        CHAR(14)     NOT NULL UNIQUE,
   telefone    VARCHAR(11)  NOT NULL,
   endereco    VARCHAR(200) NOT NULL,
-  horario     VARCHAR(100) NOT NULL DEFAULT '',
+  horario     VARCHAR(100) NOT NULL DEFAULT '', -- texto de exibição, gerado pelo servidor
   status      VARCHAR(20)  NOT NULL DEFAULT 'pendente'
               CHECK (status IN ('pendente', 'aprovado', 'bloqueado')),
-  criado_em   TIMESTAMPTZ  NOT NULL DEFAULT now()
+  criado_em   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  -- Spec 002 (CA-002-06): horário de retirada estruturado. 0 = domingo … 6 = sábado.
+  dias_retirada SMALLINT[] NOT NULL DEFAULT '{1,2,3,4,5}'
+              CONSTRAINT restaurants_dias_retirada_validos
+              CHECK (dias_retirada <@ ARRAY[0, 1, 2, 3, 4, 5, 6]::SMALLINT[]
+                     AND cardinality(dias_retirada) BETWEEN 1 AND 7),
+  abre_as     TIME,
+  fecha_as    TIME,
+  CONSTRAINT restaurants_janela_retirada
+    CHECK ((abre_as IS NULL AND fecha_as IS NULL)
+           OR (abre_as IS NOT NULL AND fecha_as IS NOT NULL AND abre_as < fecha_as))
 );
 
 -- Marmitas. Preço em centavos (inteiro). imagem_key = chave do objeto no S3.
@@ -93,7 +103,7 @@ CREATE TABLE IF NOT EXISTS order_items (
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 
 -- Marca as migrations como aplicadas para o backend não reaplicá-las.
-INSERT INTO schema_migrations (nome) VALUES ('001_init.sql'), ('002_token_versao.sql')
+INSERT INTO schema_migrations (nome) VALUES ('001_init.sql'), ('002_token_versao.sql'), ('003_horario_retirada.sql')
 ON CONFLICT (nome) DO NOTHING;
 
 COMMIT;

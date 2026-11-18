@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, errorText } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
+import HorarioRetirada, { horarioDoRestaurante } from '../../components/HorarioRetirada.jsx';
 import StatusEmpresa from '../../components/StatusEmpresa.jsx';
 import { Alert, Badge, Field, useLoad } from '../../components/ui.jsx';
 import { STATUS_EMPRESA } from '../../format.js';
@@ -8,14 +9,14 @@ import { STATUS_EMPRESA } from '../../format.js';
 // Spec 002 — HU-002-01/02.
 export default function MinhaEmpresa() {
   const { refresh } = useAuth();
-  const { data, error } = useLoad(() => api('/restaurants/me'));
+  const { data, error, reload } = useLoad(() => api('/restaurants/me'));
   const [form, setForm] = useState(null);
   const [msg, setMsg] = useState({ type: 'error', text: '' });
 
   useEffect(() => {
     if (data) {
-      const { nome, telefone, endereco, horario } = data.restaurante;
-      setForm({ nome, telefone, endereco, horario });
+      const { nome, telefone, endereco } = data.restaurante;
+      setForm({ nome, telefone, endereco, ...horarioDoRestaurante(data.restaurante) });
     }
   }, [data]);
 
@@ -25,6 +26,7 @@ export default function MinhaEmpresa() {
       await api('/restaurants/me', { method: 'PUT', body: form });
       setMsg({ type: 'success', text: 'Dados atualizados.' });
       refresh();
+      reload(); // traz o texto de horário gerado pelo servidor
     } catch (err) {
       setMsg({ type: 'error', text: errorText(err) });
     }
@@ -56,9 +58,8 @@ export default function MinhaEmpresa() {
         <Field label="Endereço de retirada">
           <input required minLength={5} maxLength={200} value={form.endereco} onChange={set('endereco')} />
         </Field>
-        <Field label="Horário de retirada">
-          <input maxLength={100} value={form.horario} onChange={set('horario')} />
-        </Field>
+        <HorarioRetirada value={form} onChange={(h) => setForm({ ...form, ...h })} />
+        {r.horario && <p className="muted small">Exibido aos clientes: {r.horario}</p>}
         <button type="submit" className="btn" disabled={r.status === 'bloqueado'}>
           Salvar
         </button>

@@ -7,3 +7,6 @@
 - [x] T03 — Rotas `/me` (GET/PUT)
 - [x] T04 — Testes CA-002-01 a CA-002-05
 - [x] T05 — Telas Restaurantes (cliente) e Minha Empresa (restaurante)
+- [x] T06 — Migration 003 (horário estruturado) + `horario.js` + validação zod
+- [x] T07 — Testes CA-002-06 e CA-002-07
+- [x] T08 — Componente `HorarioRetirada` no Cadastro de empresa e em Minha empresa

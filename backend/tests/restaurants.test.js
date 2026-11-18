@@ -58,4 +58,71 @@ describe('Spec 002 — Restaurantes', () => {
     expect(r.user_id).toBeUndefined();
     expect(JSON.stringify(res.body)).not.toContain('@');
   });
+
+  const dados = (extra = {}) => ({ nome: 'Fit Horário', telefone: '47999990000', endereco: 'Rua A, 100', ...extra });
+
+  it('CA-002-06 cadastro com horário estruturado gera o texto no servidor (horario enviado é ignorado)', async () => {
+    const res = await api()
+      .post('/api/auth/register/restaurante')
+      .send({
+        nome: 'Dona Ana',
+        email: 'ana@fit.com',
+        senha: 'Senha123',
+        restaurante: {
+          ...dados(),
+          cnpj: '11222333000144',
+          horario: '<b>texto livre</b>',
+          dias_retirada: [1, 2, 3, 4, 5],
+          abre_as: '11:00',
+          fecha_as: '14:00',
+        },
+      });
+    expect(res.status).toBe(201);
+    const login = await api().post('/api/auth/login').send({ email: 'ana@fit.com', senha: 'Senha123' });
+    const me = await api().get('/api/restaurants/me').set(auth(login.body.token));
+    expect(me.body.restaurante).toMatchObject({
+      dias_retirada: [1, 2, 3, 4, 5],
+      abre_as: '11:00',
+      fecha_as: '14:00',
+      horario: 'Seg a Sex · 11:00–14:00',
+    });
+  });
+
+  it.each([
+    [[1, 3, 5], 'Seg, Qua, Sex · 10:00–15:30'],
+    [[0, 1, 2, 3, 4, 5, 6], 'Todos os dias · 10:00–15:30'],
+    [[6, 0], 'Dom, Sáb · 10:00–15:30'],
+  ])('CA-002-06 edição com dias %j gera "%s"', async (dias, texto) => {
+    const r = await createRestaurante();
+    const res = await api()
+      .put('/api/restaurants/me')
+      .set(auth(r.token))
+      .send(dados({ dias_retirada: dias, abre_as: '10:00', fecha_as: '15:30' }));
+    expect(res.status).toBe(200);
+    expect(res.body.restaurante).toMatchObject({ abre_as: '10:00', fecha_as: '15:30', horario: texto });
+    // A listagem pública traz os campos estruturados.
+    const pub = await api().get(`/api/restaurants/${r.restaurantId}`);
+    expect(pub.body.restaurante).toMatchObject({ abre_as: '10:00', fecha_as: '15:30', horario: texto });
+  });
+
+  it('CA-002-06 sem abertura/fechamento o restaurante fica sem horário configurado', async () => {
+    const r = await createRestaurante();
+    const res = await api().put('/api/restaurants/me').set(auth(r.token)).send(dados({ abre_as: '', fecha_as: '' }));
+    expect(res.status).toBe(200);
+    expect(res.body.restaurante).toMatchObject({ abre_as: null, fecha_as: null, horario: '', dias_retirada: [1, 2, 3, 4, 5] });
+  });
+
+  it.each([
+    ['abertura depois do fechamento', { abre_as: '15:00', fecha_as: '11:00' }],
+    ['abertura igual ao fechamento', { abre_as: '11:00', fecha_as: '11:00' }],
+    ['só a abertura', { abre_as: '11:00' }],
+    ['hora fora do formato', { abre_as: '25:00', fecha_as: '26:00' }],
+    ['dia fora de 0–6', { dias_retirada: [7], abre_as: '11:00', fecha_as: '14:00' }],
+    ['dia repetido', { dias_retirada: [1, 1], abre_as: '11:00', fecha_as: '14:00' }],
+    ['nenhum dia', { dias_retirada: [], abre_as: '11:00', fecha_as: '14:00' }],
+  ])('CA-002-07 %s → 400', async (_caso, extra) => {
+    const r = await createRestaurante();
+    const res = await api().put('/api/restaurants/me').set(auth(r.token)).send(dados(extra));
+    expect(res.status).toBe(400);
+  });
 });
