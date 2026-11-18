@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: marmifit
+  labels:
+    # Pod Security Admission: bloqueia pods privilegiados/root no namespace (hardening, Aula 10).
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest

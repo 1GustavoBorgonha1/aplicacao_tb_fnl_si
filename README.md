@@ -96,6 +96,8 @@ specs/
 
 ## Arquitetura
 
+![Arquitetura na AWS](docs/arquitetura-aws.png)
+
 ```
  navegador ──► frontend (Nginx :8080, não-root) ──► backend (Node/Express :3000, não-root) ──► Postgres
                React build + headers + rate limit     JWT + RBAC + zod + logs de auditoria      (rede interna)
