@@ -1,0 +1,1 @@
+# Regras do OWASP ZAP (zap-baseline.py -c). Formato: id<TAB>IGNORE|WARN|FAIL<TAB>justificativa
