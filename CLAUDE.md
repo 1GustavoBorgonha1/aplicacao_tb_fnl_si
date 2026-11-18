@@ -106,7 +106,13 @@ docker build -t marmifit-backend:local --target runtime backend
 docker build -t marmifit-frontend:local frontend
 kubectl apply -k k8s/overlays/local       # exige k8s/overlays/local/*.local.env (copiar dos .example)
 kubectl -n marmifit port-forward svc/frontend 30080:8080   # NodePort não chega ao Windows no modo kind
+
+# Simulação da AWS (preferível): K3s real com k3d, 1 master + 3 workers, s3mock como S3 (k8s/README.md)
+k3d image import marmifit-backend:local marmifit-frontend:local -c marmifit --mode direct   # sem --mode direct a importação falha em parte
+kubectl --context k3d-marmifit apply -k k8s/overlays/k3d
+bash k8s/overlays/k3d/verificar-segmentacao.sh   # prova as NetworkPolicies
 ```
+⚠️ Docker Desktop + Kubernetes do Docker Desktop + k3d + compose ao mesmo tempo pesam: com o disco cheio o containerd do Docker Desktop entra em pânico (SIGBUS) e o K3s do k3d corrompe — recrie o cluster (`k3d cluster delete/create`). Mantenha >10 GB livres no C:.
 
 Antes de considerar uma tarefa pronta: `npm run lint` e os testes do backend verdes, `npm test` e `npm run build` do frontend ok e `npm audit` sem high/critical.
 
@@ -193,6 +199,7 @@ infra/                  README.md (contrato com o Terraform), database/ (schema.
 - **Nginx:** `add_header` não é herdado por um `location` que define o seu próprio. Em todo bloco com `add_header`, inclua `/etc/nginx/conf.d/security-headers.inc`. Os headers equivalentes do helmet são removidos no proxy (`proxy_hide_header` em `proxy.inc`) para não duplicar.
 - O container do frontend é `read_only`. Não use templates com `envsubst` do Nginx, porque eles escrevem em `conf.d`. No Kubernetes, o nome `backend` é o Service ClusterIP (`k8s/base/backend.yaml`); não renomeie o Service.
 - `TRUST_PROXY`: 1 localmente (Nginx), 2 na AWS (ALB + Nginx). O Nginx usa `real_ip` para limitar por IP do cliente.
+- O driver S3 é testado contra `adobe/s3mock` (CI e `docker-compose.test.yml`, via `S3_TEST_ENDPOINT`). A imagem `minio/minio` não existe mais no Docker Hub.
 - `docker-compose.test.yml` **não** monta `coverage/` (o vitest tenta apagar a pasta e falha com EBUSY num ponto de montagem).
 - zod 4: use `z.flattenError(err)` (não `err.flatten()`); o locale `pt` é configurado em `validate.js`. O zod 3 foi barrado pelo `npm audit` (GHSA-mrhx-c7xc-m3w5) — não faça downgrade.
 - O host do usuário tem um Postgres próprio em `127.0.0.1:5432`; ele não tem relação com o projeto (o container `db` não publica porta). Para testes no host, use outra porta (55432).

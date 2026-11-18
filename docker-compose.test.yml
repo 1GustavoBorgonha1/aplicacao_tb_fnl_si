@@ -18,6 +18,14 @@ services:
       timeout: 3s
       retries: 20
 
+  # S3 compatível para testar o driver S3 com o mesmo código da AWS.
+  s3-test:
+    image: adobe/s3mock:5.2.3
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: marmifit-teste
+    read_only: true
+    tmpfs: [/tmp]
+
   tests:
     build:
       context: ./backend
@@ -25,5 +33,8 @@ services:
     depends_on:
       db-test:
         condition: service_healthy
+      s3-test:
+        condition: service_started
     environment:
       DATABASE_URL: postgres://marmifit:marmifit@db-test:5432/marmifit_test
+      S3_TEST_ENDPOINT: http://s3-test:9090

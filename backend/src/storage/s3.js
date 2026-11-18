@@ -1,13 +1,19 @@
-// Driver S3 (produção na AWS). As credenciais vêm da IAM Role da EC2 —
-// nenhuma access key fica no .env (mínimo privilégio / segredos fora do código).
+// Driver S3 (produção na AWS). As credenciais vêm da IAM Role (instance profile) dos workers —
+// nenhuma access key fica em arquivo (mínimo privilégio / segredos fora do código).
+// S3_ENDPOINT aponta para um S3 compatível (s3mock) nos testes e no K3s local; na AWS fica vazio.
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { randomUUID } from 'node:crypto';
 
 const CONTENT_TYPES = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
 
-export function createS3Storage({ S3_BUCKET, S3_PUBLIC_URL, AWS_REGION }) {
-  const client = new S3Client({ region: AWS_REGION });
-  const base = S3_PUBLIC_URL || `https://${S3_BUCKET}.s3.${AWS_REGION}.amazonaws.com`;
+export function createS3Storage({ S3_BUCKET, S3_PUBLIC_URL, S3_ENDPOINT, AWS_REGION }) {
+  const client = new S3Client({
+    region: AWS_REGION,
+    ...(S3_ENDPOINT && { endpoint: S3_ENDPOINT, forcePathStyle: true }),
+  });
+  const base =
+    S3_PUBLIC_URL ||
+    (S3_ENDPOINT ? `${S3_ENDPOINT}/${S3_BUCKET}` : `https://${S3_BUCKET}.s3.${AWS_REGION}.amazonaws.com`);
 
   return {
     async save(buffer, ext) {

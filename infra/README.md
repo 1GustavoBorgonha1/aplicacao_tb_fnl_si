@@ -31,6 +31,8 @@ usuários → S3 de imagens (GET público só em meals/*)
 - **Nunca commitar** (já bloqueado no `.gitignore`): `.terraform/`, `*.tfstate*`, `*.tfvars` com valores reais, chaves `.pem`, credenciais AWS.
 - **State remoto** no bucket S3 do estado (o do diagrama): versionamento ligado, criptografia, acesso público bloqueado e **lock** (DynamoDB ou `use_lockfile` do backend S3). O state pode conter senhas — por isso nunca vai para o Git.
 
+> **Dica para o K3s:** aplique o taint `node-role.kubernetes.io/control-plane:NoSchedule` no master para a aplicação rodar só nos 3 workers (como no diagrama). A topologia inteira foi validada localmente com k3d — veja `k8s/README.md`.
+
 ## 3. Rede e Security Groups
 VPC com subnet **pública** (ALB, NAT Gateway) e **privada** (master, workers, RDS). Os nós do K3s não têm IP público.
 

@@ -54,8 +54,15 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U marmifit" --health-interval 5s --health-timeout 3s --health-retries 10
+      # S3 compatível: o driver S3 é testado com o mesmo código que roda na AWS.
+      s3:
+        image: adobe/s3mock:5.2.3
+        env:
+          COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: marmifit-teste
+        ports: ["9090:9090"]
     env:
       DATABASE_URL: postgres://marmifit@localhost:5432/marmifit_test
+      S3_TEST_ENDPOINT: http://localhost:9090
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -125,9 +132,8 @@ jobs:
 
       - name: Kubernetes — renderizar os overlays
         run: |
-          for f in backend db; do cp "k8s/overlays/local/$f.local.env.example" "k8s/overlays/local/$f.local.env"; done
-          kubectl kustomize k8s/overlays/aws > /dev/null
-          kubectl kustomize k8s/overlays/local > /dev/null
+          for o in local k3d; do for f in backend db; do cp "k8s/overlays/$o/$f.local.env.example" "k8s/overlays/$o/$f.local.env"; done; done
+          for o in aws local k3d; do kubectl kustomize "k8s/overlays/$o" > /dev/null; done
           echo "Manifests válidos"
 
       - name: Terraform existe?

@@ -1,0 +1,6 @@
+# Postgres dentro do cluster, só para ambientes locais (na AWS o banco é o RDS).
+# Usado pelos overlays local (Docker Desktop) e k3d (simulação da AWS).
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - postgres.yaml

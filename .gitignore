@@ -12,7 +12,7 @@ uploads/
 .idea/
 
 # Segredos do overlay local do Kubernetes
-k8s/overlays/local/*.local.env
+k8s/overlays/*/*.local.env
 
 # Terraform (o state fica no S3 remoto; nunca no Git)
 .terraform/

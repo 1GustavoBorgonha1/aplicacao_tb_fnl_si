@@ -21,6 +21,8 @@ const schema = z.object({
   UPLOAD_DIR: z.string().default('./uploads'),
   S3_BUCKET: z.string().optional(),
   S3_PUBLIC_URL: z.string().optional(),
+  // Só para ambientes que simulam o S3 (s3mock no CI e no K3s local); na AWS fica vazio.
+  S3_ENDPOINT: z.string().url().optional(),
   AWS_REGION: z.string().default('us-east-1'),
   LOG_LEVEL: z.string().default('info'),
 });
