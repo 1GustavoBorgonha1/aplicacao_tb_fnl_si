@@ -14,3 +14,5 @@ proxy_hide_header X-Content-Type-Options;
 proxy_hide_header Referrer-Policy;
 proxy_hide_header Content-Security-Policy;
 proxy_hide_header Cross-Origin-Opener-Policy;
+proxy_hide_header Cross-Origin-Resource-Policy;
+proxy_hide_header Cross-Origin-Embedder-Policy;

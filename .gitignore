@@ -22,3 +22,4 @@ k8s/overlays/*/*.local.env
 !*.tfvars.example
 crash.log
 *.pem
+/zap/

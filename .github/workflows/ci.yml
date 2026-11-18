@@ -193,9 +193,33 @@ jobs:
             -Dsonar.qualitygate.timeout=300
             ${{ vars.SONAR_ORGANIZATION && format('-Dsonar.organization={0}', vars.SONAR_ORGANIZATION) || '' }}
 
+  dast:
+    name: DAST (OWASP ZAP)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Sobe a aplicação inteira (Nginx + API + Postgres, segredos aleatórios descartáveis) e ataca
+      # de fora com o OWASP ZAP baseline: headers, cookies, CSP, XSS refletido, vazamento de informação.
+      # Script e regras (com justificativas) em .zap/.
+      - name: OWASP ZAP baseline scan
+        run: bash .zap/dast.sh
+
+      - name: Publicar relatório do ZAP
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: relatorio-zap
+          path: zap/relatorio-zap.*
+          retention-days: 14
+
+      - name: Derrubar a aplicação
+        if: always()
+        run: docker compose down -v
+
   build:
     name: Docker build + push (Docker Hub)
-    needs: [sonarqube, audit, infra]
+    needs: [sonarqube, audit, infra, dast]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
