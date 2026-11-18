@@ -75,7 +75,7 @@ export default function MinhaConta() {
           onChange={set('confirmar')}
         />
       </Field>
-      <button className="btn" disabled={enviando}>
+      <button type="submit" className="btn" disabled={enviando}>
         {enviando ? 'Salvando…' : 'Trocar senha'}
       </button>
     </form>
