@@ -18,7 +18,7 @@ Hoje não existe forma de um usuário trocar a própria senha. O caso mais grave
 - **CA-006-04** — Nova senha igual à atual retorna **400**.
 - **CA-006-05** — Após a troca, **todos os tokens emitidos antes** dela passam a receber **401**; o token devolvido na resposta continua válido.
 - **CA-006-06** — Requisição sem token ou com token inválido retorna **401**.
-- **CA-006-07** — Após N tentativas com senha atual incorreta no intervalo (mesmo limite do login: padrão 5 / 15 min) para o mesmo usuário, retorna **429**.
+- **CA-006-07** — Após N tentativas com senha atual incorreta no intervalo (mesmo limite do login: padrão 10 / 15 min) para o mesmo usuário, retorna **429**.
 
 ## 4. Requisitos de segurança
 - **RS-006-01** — A senha atual é sempre verificada com bcrypt antes da troca (impede que um token roubado sozinho tome a conta).

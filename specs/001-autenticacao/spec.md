@@ -22,14 +22,14 @@ Na tela inicial o usuário escolhe **"Sou cliente"** ou **"Sou empresa"** e se c
 - **CA-001-07** — Rota protegida sem token ou com token inválido retorna **401**.
 - **CA-001-08** — Rota de outro perfil (ex.: cliente em `/api/admin/*`) retorna **403**.
 - **CA-001-09** — Usuário desativado pelo admin não consegue logar (**403**) e seus tokens existentes deixam de valer.
-- **CA-001-10** — Após N tentativas de login no intervalo (padrão 5 / 15 min) por IP, retorna **429**.
+- **CA-001-10** — Após N tentativas de login **com falha** no intervalo (padrão 10 / 15 min) por IP, retorna **429**. Logins bem-sucedidos **não** consomem o limite (uso normal — vários logins/logouts — nunca é bloqueado).
 - **CA-001-11** — Não é possível se cadastrar como `admin` (campo `role` do body é ignorado).
 
 ## 4. Requisitos de segurança
 - **RS-001-01** — Senhas armazenadas com bcrypt (custo 12); nunca retornadas pela API nem logadas.
 - **RS-001-02** — JWT HS256 com segredo de ≥ 32 caracteres vindo do ambiente, expiração de 2h.
 - **RS-001-03** — Mensagem de erro de login genérica (evita enumeração de usuários).
-- **RS-001-04** — Rate limit no login e no cadastro (força bruta — Hydra, Aula 8).
+- **RS-001-04** — Rate limit no login e no cadastro (força bruta — Hydra, Aula 8). No login contam só as falhas (10 / 15 min por IP, `LOGIN_RATE_LIMIT`); o Nginx ainda limita rajadas (2 req/s, burst 10).
 - **RS-001-05** — Logs de auditoria para login com sucesso, falha e bloqueio (sem senha).
 - **RS-001-06** — E-mail normalizado (minúsculas e sem espaços) antes de salvar/comparar.
 

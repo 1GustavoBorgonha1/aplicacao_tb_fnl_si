@@ -71,7 +71,7 @@ O `.env` fica na raiz, é lido pelo `docker-compose.yml` e **nunca é commitado*
    Depois edite `ADMIN_EMAIL`/`ADMIN_PASSWORD` se quiser outros valores.
 8. **Conferir:** `docker compose config >/dev/null && echo ok` (acusa variável faltando) → `docker compose up -d --build` → `curl localhost:8080/api/health` deve responder `{"status":"ok"}` → login com o admin.
 
-Variáveis que existem só no backend e já têm default (não precisam ir no `.env` local): `JWT_EXPIRES_IN=2h`, `BCRYPT_COST=12`, `LOGIN_RATE_LIMIT=5`, `LOGIN_RATE_WINDOW_MIN=15`, `TRUST_PROXY=1`, `LOG_LEVEL=info`, `STORAGE_DRIVER=local`. Lista completa e validação em `backend/src/config.js`.
+Variáveis que existem só no backend e já têm default (não precisam ir no `.env` local): `JWT_EXPIRES_IN=2h`, `BCRYPT_COST=12`, `LOGIN_RATE_LIMIT=10` (só falhas contam), `LOGIN_RATE_WINDOW_MIN=15`, `TRUST_PROXY=1`, `LOG_LEVEL=info`, `STORAGE_DRIVER=local`. Lista completa e validação em `backend/src/config.js`.
 
 **Na AWS** não há `.env`: a configuração vem do ConfigMap gerado em `k8s/overlays/aws/kustomization.yaml` (bucket, região, `DATABASE_SSL=true`, `TRUST_PROXY=2`) e do Secret `backend-secret`, criado no master com `kubectl create secret` (nunca em arquivo versionado). Veja `docs/deploy-aws.md`.
 

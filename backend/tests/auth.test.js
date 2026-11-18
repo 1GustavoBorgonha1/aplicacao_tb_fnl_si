@@ -106,6 +106,16 @@ describe('Spec 001 — Autenticação', () => {
     expect((await tentativa()).status).toBe(429);
   });
 
+  it('CA-001-10 logins bem-sucedidos não consomem o limite', async () => {
+    const { email } = await createCliente();
+    const limited = createApp({ loginLimit: 3, loginWindowMin: 15 });
+    const login = (senha) => request(limited).post('/api/auth/login').send({ email, senha });
+    for (let i = 0; i < 6; i++) expect((await login('Senha123')).status).toBe(200);
+    // As 3 falhas ainda estão disponíveis depois de 6 acertos.
+    for (let i = 0; i < 3; i++) expect((await login('Errada123')).status).toBe(401);
+    expect((await login('Errada123')).status).toBe(429);
+  });
+
   it('CA-001-11 campo role do body é ignorado no cadastro', async () => {
     const res = await api().post('/api/auth/register/cliente').send({ nome: 'Hacker', email: 'h@x.com', senha: 'Senha123', role: 'admin' });
     expect(res.status).toBe(201);

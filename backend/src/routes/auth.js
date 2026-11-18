@@ -44,9 +44,11 @@ export function authRouter({ loginLimit, loginWindowMin }) {
   const router = Router();
 
   // RS-001-04 — Rate limit contra força bruta (Hydra) e cadastro em massa.
+  // Só tentativas com falha contam (CA-001-10): quem acerta a senha nunca é bloqueado.
   const loginLimiter = rateLimit({
     windowMs: loginWindowMin * 60_000,
     limit: loginLimit,
+    skipSuccessfulRequests: true,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: { erro: 'Muitas tentativas. Tente novamente mais tarde.' },
