@@ -77,11 +77,11 @@ export default function Catalogo() {
         )}
 
         <div className="chips" role="group" aria-label="Filtrar por categoria">
-          <button className={`chip ${categoria === '' ? 'active' : ''}`} onClick={() => setCategoria('')}>
+          <button type="button" className={`chip ${categoria === '' ? 'active' : ''}`} onClick={() => setCategoria('')}>
             Todas
           </button>
           {Object.entries(CATEGORIAS).map(([k, label]) => (
-            <button key={k} className={`chip ${categoria === k ? 'active' : ''}`} onClick={() => setCategoria(k)}>
+            <button type="button" key={k} className={`chip ${categoria === k ? 'active' : ''}`} onClick={() => setCategoria(k)}>
               {label}
             </button>
           ))}
@@ -108,11 +108,11 @@ export default function Catalogo() {
                 <div className="meal-foot">
                   <strong>{brl(m.preco_centavos)}</strong>
                   <div className="qty">
-                    <button className="btn btn-sm btn-ghost" onClick={() => alterar(m, -1)} disabled={!carrinho[m.id]} aria-label={`Remover ${m.nome}`}>
+                    <button type="button" className="btn btn-sm btn-ghost" onClick={() => alterar(m, -1)} disabled={!carrinho[m.id]} aria-label={`Remover ${m.nome}`}>
                       −
                     </button>
                     <span>{carrinho[m.id] ?? 0}</span>
-                    <button className="btn btn-sm" onClick={() => alterar(m, 1)} aria-label={`Adicionar ${m.nome}`}>
+                    <button type="button" className="btn btn-sm" onClick={() => alterar(m, 1)} aria-label={`Adicionar ${m.nome}`}>
                       +
                     </button>
                   </div>
@@ -149,7 +149,7 @@ export default function Catalogo() {
               <textarea maxLength={300} rows={2} value={observacao} onChange={(e) => setObservacao(e.target.value)} />
             </Field>
             <Alert>{erro}</Alert>
-            <button className="btn">Fazer pedido</button>
+            <button type="submit" className="btn">Fazer pedido</button>
             <p className="muted small">💵 Pagamento no local, na retirada.</p>
           </form>
         )}

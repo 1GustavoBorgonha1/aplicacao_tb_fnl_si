@@ -36,7 +36,7 @@ export default function CadastroCliente() {
       <Field label="Senha" hint={SENHA_HINT}>
         <input type="password" required minLength={8} maxLength={72} autoComplete="new-password" value={form.senha} onChange={set('senha')} />
       </Field>
-      <button className="btn">Criar conta</button>
+      <button type="submit" className="btn">Criar conta</button>
       <p className="muted">
         É uma empresa? <Link to="/cadastro/empresa">Cadastre sua empresa</Link>
       </p>

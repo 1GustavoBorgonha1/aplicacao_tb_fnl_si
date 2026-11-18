@@ -24,16 +24,22 @@
         └────────────┘
 ```
 
-## 2. Visão alvo (AWS — Aula 12)
+## 2. Visão alvo (AWS — trabalho final)
+
+Diagrama: [docs/arquitetura-aws.png](../../docs/arquitetura-aws.png). Infraestrutura provisionada com **Terraform** (ADR-12).
 
 ```
-Internet ─► WAF ─► ALB (HTTPS) ─► EC2 pública  (frontend / Nginx)
-                                        │ :3000
-                    subnet privada ─► EC2 privada (backend / Node) ─┬─► RDS PostgreSQL (criptografado)
-                                                                    └─► S3 privado (imagens) ─► CloudFront
+Internet ─► WAF ─► ALB (subnet pública) ─► Target Group HTTP :30080
+                                               │
+              subnet privada ─► cluster K3s: master + 3 workers (Launch Template)
+                                pod frontend (Nginx) ─► Service backend:3000 ─► pod backend (Node)
+                                               │ 5432
+                                               └─► RDS PostgreSQL (criptografado, sem acesso público)
+workers ─► NAT Gateway ─► Docker Hub (imagens) / S3 (upload das fotos) / SSM
+usuários ─► S3 de imagens (leitura pública só em meals/*)
 ```
-O Nginx continua fazendo proxy para `backend:3000`; na EC2 pública o nome `backend` aponta para o IP privado via `extra_hosts` — mesma imagem em todos os ambientes.
-Arquivos em [deploy/](../../deploy/) e roteiro manual em [docs/deploy-aws.md](../../docs/deploy-aws.md).
+O Nginx continua fazendo proxy para `backend:3000`, que no cluster é o nome do Service do Kubernetes — mesma imagem em todos os ambientes.
+Manifests em [k8s/](../../k8s/), contrato com a infraestrutura em [infra/README.md](../../infra/README.md) e runbook em [docs/deploy-aws.md](../../docs/deploy-aws.md).
 
 ## 3. Stack
 | Camada | Tecnologia | Motivo |
@@ -51,6 +57,9 @@ Arquivos em [deploy/](../../deploy/) e roteiro manual em [docs/deploy-aws.md](..
 | Testes | vitest + supertest + Postgres real | Testes de integração da API |
 | Qualidade/segurança | SonarQube + npm audit + Dependabot | Scanner no pipeline (Aula 7) |
 | CI/CD | GitHub Actions | Pipeline com gates |
+| Registro de imagens | Docker Hub | Pull pelos workers via NAT (ADR-14) |
+| Orquestração | K3s (Kubernetes leve) + Kustomize | Cluster de 4 nós barato (ADR-13) |
+| Infraestrutura | Terraform | IaC = base do plano de DR (ADR-12) |
 
 ## 4. Modelo de dados
 
@@ -87,8 +96,12 @@ Valores monetários sempre em **centavos (inteiro)**, sem ponto flutuante.
 - **ADR-04 — Usuário revalidado a cada requisição.** O middleware de auth consulta `users.ativo`; desativar um usuário corta o acesso na hora, mesmo com JWT válido.
 - **ADR-05 — Storage plugável.** Interface `save/remove/url`; driver `local` agora e `s3` na AWS.
 - **ADR-06 — SonarQube em vez de Trivy.** Decisão do grupo: SAST + qualidade + cobertura com Quality Gate bloqueante. Dependências cobertas por `npm audit` + Dependabot.
-- **ADR-07 — Sem IaC.** A infraestrutura AWS será provisionada manualmente seguindo `docs/deploy-aws.md`.
+- ~~**ADR-07 — Sem IaC.**~~ **Substituído pelo ADR-12.** A infraestrutura AWS será provisionada manualmente seguindo `docs/deploy-aws.md`.
 - **ADR-08 — Migrations SQL próprias.** Um runner de ~30 linhas executa `migrations/*.sql` em ordem no startup; dispensa ORM.
-- **ADR-09 — Frontend e backend em EC2s separadas na AWS.** Atende a Aula 12 (máquina pública expõe, privada hospeda serviços); o backend nunca recebe tráfego direto da internet.
+- ~~**ADR-09 — Frontend e backend em EC2s separadas na AWS.**~~ **Substituído pelo ADR-13.** Atende a Aula 12 (máquina pública expõe, privada hospeda serviços); o backend nunca recebe tráfego direto da internet.
 - **ADR-10 — zod 4.** O `npm audit` do pipeline barrou o zod 3 (GHSA-mrhx-c7xc-m3w5, severidade alta); migrado para zod 4 (`z.flattenError`).
 - **ADR-11 — Revogação de sessão por versão de token.** O JWT continua *stateless*, mas carrega a claim `tv`, comparada com `users.token_versao` no `requireAuth` (que já consulta o banco — ADR-04). Trocar a senha incrementa a versão e derruba todas as sessões anteriores sem precisar de *blacklist* de tokens (spec 006).
+- **ADR-12 — Terraform como IaC e base do DR.** Requisito do trabalho final: toda a infraestrutura (VPC, subnets, NAT, SGs, ALB + WAF, EC2 do K3s, RDS, S3) é descrita em `infra/terraform/`, versionada e revisada por PR. O state fica num bucket S3 privado, versionado e com lock. Recuperar o ambiente = `terraform apply` + restore do snapshot do RDS ([PCN/DR](../../docs/continuidade/pcn-pri-dr.md)).
+- **ADR-13 — K3s em vez de EC2 com docker compose.** Cluster com 1 master e 3 workers (Launch Template + Auto Scaling Group) na subnet privada. O ALB encaminha para o NodePort **30080** do frontend; o backend fica só como Service ClusterIP. Ganhos: rollout sem indisponibilidade, autorrecuperação de pods, NetworkPolicy (segmentação dentro do cluster) e Pod Security `restricted`. Manifests com Kustomize (embutido no `kubectl`, sem dependência nova).
+- **ADR-14 — Docker Hub como registro de imagens.** Segue o diagrama da parte 1; repositórios públicos dispensam credencial de pull nos workers. A pipeline publica as imagens com a tag do commit (SHA), o que torna cada deploy rastreável e reversível (`kubectl rollout undo`).
+- **ADR-15 — Deploy via AWS SSM + GitHub OIDC.** O master não tem IP público, então a pipeline executa `kubectl set image` no master por **SSM Run Command**, assumindo uma IAM Role via **OIDC** (credencial temporária, restrita a este repositório e à instância do master). Sem chave SSH, sem access key guardada no GitHub e sem porta administrativa aberta.

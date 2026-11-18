@@ -4,7 +4,7 @@ Plataforma que conecta **restaurantes de marmitas fitness** a **clientes** que q
 O cliente escolhe um restaurante, vê o catálogo, faz o pedido e **retira no local** — o pagamento é feito na retirada.
 
 > Trabalho de **Auditoria e Segurança de Sistemas** (UNIDAVI — Prof. Fabiano Gabardo Lemos), atividade da Aula 7 (SSDLC):
-> sistema simples desenvolvido com **SDD**, em Docker, com pipeline **GitHub Actions** e scanner de segurança (**SonarQube**) no processo de deploy, preparado para a **AWS** (EC2 + RDS + S3 + ALB + WAF).
+> sistema simples desenvolvido com **SDD**, em Docker, com pipeline **GitHub Actions** e scanner de segurança (**SonarQube**) no processo de deploy, implantado na **AWS** com **Terraform** (VPC segmentada, cluster **K3s**, RDS PostgreSQL, S3, ALB + WAF).
 > A ideia de negócio vem do trabalho de Empreendedorismo & Inovação (MarmiFit).
 
 ## Sumário
@@ -146,15 +146,16 @@ specs/
                                                        └─► imagens: pasta local  →  S3 na AWS
 ```
 
-| Local | AWS (ver [docs/deploy-aws.md](docs/deploy-aws.md)) |
+| Local (Docker Compose) | AWS (ver [docs/deploy-aws.md](docs/deploy-aws.md)) |
 |---|---|
-| Container `frontend` | EC2 pública atrás de **ALB + WAF** |
-| Container `backend` | EC2 **privada** |
-| Container `db` (Postgres 16) | **RDS** PostgreSQL (subnet privada, criptografado) |
-| Volume `uploads` (`STORAGE_DRIVER=local`) | **S3** privado + CloudFront (`STORAGE_DRIVER=s3`) |
-| Rede `back-net` (internal) | Subnet privada + Security Groups |
+| Container `frontend` | Pods do frontend no **K3s** (NodePort 30080) atrás de **ALB + WAF** |
+| Container `backend` | Pods do backend no K3s (Service interno, só o frontend acessa) |
+| Container `db` (Postgres 16) | **RDS PostgreSQL** (subnet privada, criptografado) |
+| Volume `uploads` (`STORAGE_DRIVER=local`) | **S3** (`STORAGE_DRIVER=s3`; leitura pública só em `meals/*`) |
+| Rede `back-net` (internal) | Subnet privada + Security Groups + NetworkPolicy |
+| `docker compose up` | **Terraform** (infraestrutura) + `kubectl apply -k k8s/overlays/aws` |
 
-A troca é **só por variáveis de ambiente** — o código é o mesmo. Detalhes e decisões (ADRs) em [specs/000-arquitetura/plan.md](specs/000-arquitetura/plan.md).
+A troca é **só por configuração** (variáveis de ambiente / ConfigMap e Secret) — o código e as imagens são os mesmos. Contrato com a infraestrutura em [infra/README.md](infra/README.md); manifests em [k8s/](k8s/). Detalhes e decisões (ADRs) em [specs/000-arquitetura/plan.md](specs/000-arquitetura/plan.md).
 
 ## Pipeline CI/CD + SonarQube
 
@@ -196,9 +197,9 @@ docker run --rm --network host -e SONAR_HOST_URL=http://localhost:9000 -e SONAR_
 | 7 | **SSDLC** | SDD (`specs/`), requisitos de segurança em cada spec, testes, SonarQube no pipeline |
 | 8 | OWASP Top 10 | [docs/seguranca/owasp-mitigacoes.md](docs/seguranca/owasp-mitigacoes.md) — controle × arquivo × teste |
 | 9 | Gestão de riscos, matriz P×I | [docs/seguranca/matriz-riscos.md](docs/seguranca/matriz-riscos.md) |
-| 10 | Hardening, mínimo privilégio, CIS | [docs/seguranca/hardening.md](docs/seguranca/hardening.md) — containers não-root, `read_only`, `cap_drop`, rede interna |
+| 10 | Hardening, mínimo privilégio, CIS | [docs/seguranca/hardening.md](docs/seguranca/hardening.md) — containers não-root, `read_only`, `cap_drop`, Pod Security `restricted`, NetworkPolicy |
 | 11 | PCN, resposta a incidentes, DR, CI/CD | [docs/continuidade/pcn-pri-dr.md](docs/continuidade/pcn-pri-dr.md) |
-| 12 | Nuvem: EC2 pública/privada, LB, WAF | [docs/deploy-aws.md](docs/deploy-aws.md) + [deploy/](deploy/) |
+| 12 | Nuvem: subnets pública/privada, LB, WAF, IaC | [docs/deploy-aws.md](docs/deploy-aws.md), [infra/README.md](infra/README.md), [k8s/](k8s/) |
 
 ## API
 
@@ -223,8 +224,9 @@ Detalhes de cada rota no `plan.md` da spec correspondente.
 backend/        API Node/Express (src/routes, middlewares, services, storage, db) + migrations + tests
 frontend/       React + Vite + nginx.conf
 specs/          SDD — specs, planos e tarefas
-docs/           segurança, continuidade e deploy AWS
-deploy/         compose de produção (EC2 pública e privada)
+docs/           segurança, continuidade, deploy AWS e diagrama da arquitetura
+k8s/            manifests Kubernetes (Kustomize): base + overlays local e aws
+infra/          terraform/ (infraestrutura AWS) e database/ (schema e requisitos do RDS)
 .github/        pipeline CI/CD e Dependabot
 docker-compose.yml        ambiente local
 docker-compose.test.yml   testes de integração

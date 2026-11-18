@@ -13,11 +13,12 @@
 ## 2. Estratégias de continuidade
 | Ameaça | Estratégia |
 |---|---|
-| Queda do container | `restart: unless-stopped` + health check |
-| Queda da EC2 | AMI/Launch Template documentado + imagens no GHCR → nova instância em minutos |
+| Queda de um pod | Kubernetes recria o pod (readiness/liveness probes); 2+ réplicas espalhadas pelos workers |
+| Queda de um worker | Auto Scaling Group do Launch Template sobe outro nó, que entra no cluster com o token do master; os pods são reagendados |
+| Perda de toda a infraestrutura (região, conta, exclusão acidental) | **Terraform** recria tudo a partir do Git (ADR-12) |
 | Perda/corrupção do banco | RDS com backup automático (retenção 7 dias, point-in-time recovery) + snapshot manual antes de cada deploy |
 | Exclusão de imagens | Versionamento habilitado no bucket S3 |
-| Deploy com bug | Rollback: subir a tag (`github.sha`) anterior no GHCR |
+| Deploy com bug | Rollback: `kubectl -n marmifit rollout undo deployment/backend` ou `set image` com a tag (SHA) anterior no Docker Hub |
 | Ataque DDoS | WAF (rate-based rule) + AWS Shield Standard |
 
 ## 3. Backup e restauração (ambiente local)
@@ -60,11 +61,18 @@ Teste de restauração: **mensal**, em ambiente separado.
 > "Identificamos uma instabilidade/incidente em [data/hora] que afetou [serviço]. [Dados afetados ou "nenhum dado pessoal foi afetado"]. Medidas tomadas: [...]. Próxima atualização em [horário]."
 
 ## 5. Recuperação de desastres (DR) — passo a passo
-1. Provisionar nova EC2 seguindo [deploy-aws.md](../deploy-aws.md).
-2. Restaurar o RDS a partir do snapshot/point-in-time mais recente.
-3. Apontar `DATABASE_URL` para a instância restaurada.
-4. `docker compose -f docker-compose.prod.yml up -d` com a última tag estável.
-5. Registrar a instância no Target Group do ALB e validar `/api/health`.
+A infraestrutura inteira está descrita em código (`infra/terraform/`), as imagens estão no Docker Hub com a tag de cada commit e o banco tem backup automático. Recuperar é **reexecutar**, não reconstruir à mão:
+
+1. **Infraestrutura:** `terraform apply` (na mesma região ou em outra, trocando a variável de região). Recria VPC, subnets, NAT, SGs, ALB + WAF, master e workers do K3s, buckets e RDS.
+2. **Banco:** restaurar o RDS a partir do **snapshot mais recente** ou por *point-in-time* (backup diário, retenção de 7 dias; snapshot manual antes de cada deploy). Para outra região, copiar antes o snapshot para ela.
+3. **Aplicação:** no master, criar o `backend-secret` com o endpoint do RDS restaurado e rodar `kubectl apply -k k8s/overlays/aws` com a última tag estável. Os workers puxam as imagens do Docker Hub.
+4. **Imagens das marmitas:** bucket S3 com versionamento; em DR regional, replicação ou cópia (`aws s3 sync`) para o bucket da nova região.
+5. **Validar:** Target Group com os 3 workers *healthy*, `GET /api/health` = `{"status":"ok"}`, login e um pedido de teste.
+
+| Indicador | Meta | Como é atingido |
+|---|---|---|
+| **RTO** | ≈ 1 h | `terraform apply` (~15–30 min, RDS é o mais lento) + restore + `kubectl apply` |
+| **RPO** | ≤ 5 min com *point-in-time*; ≤ 24 h se só houver o snapshot diário | Backups automáticos do RDS |
 
 ## 6. Testes do plano
 - Simulação semestral (ex.: "o banco caiu às 11h30").

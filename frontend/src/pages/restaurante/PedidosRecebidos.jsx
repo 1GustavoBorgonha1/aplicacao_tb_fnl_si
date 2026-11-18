@@ -52,12 +52,12 @@ export default function PedidosRecebidos() {
         {data?.pedidos.map((p) => (
           <PedidoCard key={p.id} pedido={p} titulo={p.cliente_nome} subtitulo="Pagamento na retirada">
             {PROXIMO[p.status] && (
-              <button className="btn btn-sm" onClick={() => mudar(p.id, PROXIMO[p.status][0])}>
+              <button type="button" className="btn btn-sm" onClick={() => mudar(p.id, PROXIMO[p.status][0])}>
                 {PROXIMO[p.status][1]}
               </button>
             )}
             {PODE_CANCELAR.includes(p.status) && (
-              <button className="btn btn-sm btn-danger" onClick={() => mudar(p.id, 'cancelado')}>
+              <button type="button" className="btn btn-sm btn-danger" onClick={() => mudar(p.id, 'cancelado')}>
                 Cancelar
               </button>
             )}

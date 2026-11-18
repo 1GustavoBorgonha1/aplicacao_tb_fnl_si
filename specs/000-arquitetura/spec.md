@@ -26,8 +26,8 @@ A MarmiFit (projeto de Empreendedorismo & Inovação) é uma plataforma que cone
 
 ## 4. Requisitos não funcionais
 - **RNF-01 — Conteinerização:** cada serviço roda em um container Docker; ambiente local sobe com um único `docker compose up`.
-- **RNF-02 — Portabilidade para AWS:** trocar Postgres local → **RDS** e pasta local → **S3** apenas via variáveis de ambiente.
-- **RNF-03 — Segregação de rede:** o banco só é acessível pelo backend (rede interna), espelhando a subnet privada da AWS.
+- **RNF-02 — Portabilidade para AWS:** trocar Postgres local → **RDS** e pasta local → **S3** apenas via configuração (variáveis de ambiente no Compose; ConfigMap/Secret no Kubernetes). A infraestrutura AWS é criada por **Terraform** (ADR-12) e a aplicação roda num cluster **K3s** (ADR-13).
+- **RNF-03 — Segregação de rede:** na AWS, subnet pública só com ALB e NAT; cluster e RDS na subnet privada; Security Groups em cadeia (ALB → workers :30080 → RDS :5432). Dentro do cluster, NetworkPolicy (backend só aceita o frontend). Localmente, a rede `back-net` interna do Compose espelha essa separação.
 - **RNF-04 — Pipeline:** todo push roda testes, **SonarQube** (Quality Gate) e auditoria de dependências antes do build/deploy.
 - **RNF-05 — Observabilidade:** logs estruturados em JSON (stdout) e endpoint `/api/health` para o Load Balancer.
 - **RNF-06 — Segurança:** seguir a [constituição](../../.specify/memory/constitution.md) e o mapeamento OWASP em [docs/seguranca/owasp-mitigacoes.md](../../docs/seguranca/owasp-mitigacoes.md).

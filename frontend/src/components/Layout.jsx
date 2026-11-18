@@ -42,7 +42,7 @@ export default function Layout() {
                   <span className="hide-sm">{user.nome}</span>
                   <span className="show-sm">Conta</span>
                 </NavLink>
-                <button className="btn btn-ghost" onClick={sair}>
+                <button type="button" className="btn btn-ghost" onClick={sair}>
                   Sair
                 </button>
               </>
