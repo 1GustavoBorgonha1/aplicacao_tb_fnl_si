@@ -1,0 +1,51 @@
+# Overlay local: Kubernetes do Docker Desktop, com Postgres dentro do cluster
+# e imagens no volume (STORAGE_DRIVER=local). Passo a passo em k8s/README.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: marmifit
+resources:
+  - ../../base
+  - postgres.yaml
+  - uploads-pvc.yaml
+
+images:
+  - name: marmifit-backend
+    newTag: local
+  - name: marmifit-frontend
+    newTag: local
+
+configMapGenerator:
+  - name: backend-config
+    literals:
+      - PORT=3000
+      - DATABASE_SSL=false
+      - STORAGE_DRIVER=local
+      - UPLOAD_DIR=/app/uploads
+      - TRUST_PROXY=1
+      - LOG_LEVEL=info
+
+# Segredos só de desenvolvimento, lidos de arquivos fora do Git (copie os .example).
+secretGenerator:
+  - name: backend-secret
+    envs: [backend.local.env]
+  - name: db-secret
+    envs: [db.local.env]
+
+patches:
+  # Uploads persistem num volume (o "S3 local").
+  - target: { kind: Deployment, name: backend }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value: { name: uploads, persistentVolumeClaim: { claimName: uploads } }
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: { name: uploads, mountPath: /app/uploads }
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target: { kind: Deployment, name: frontend }
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1

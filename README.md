@@ -31,20 +31,62 @@ Empresas novas ficam **pendentes** até o admin aprovar; só então aparecem par
 
 ## Como rodar
 
-**Pré-requisitos:** Docker + Docker Compose.
+Guia para testar a aplicação no seu computador (Windows, Linux ou macOS). Leva uns 10 minutos na primeira vez.
 
+### 1. Instale os pré-requisitos
+| Ferramenta | Onde baixar | Observação |
+|---|---|---|
+| **Git** | https://git-scm.com/downloads | No Windows, vem junto o **Git Bash** (use ele nos comandos abaixo) |
+| **Docker Desktop** | https://www.docker.com/products/docker-desktop | No Windows, precisa do **WSL 2** (o instalador oferece). Reinicie o PC depois de instalar |
+
+Abra o Docker Desktop e espere aparecer **"Engine running"** no canto inferior esquerdo. Não precisa instalar Node nem Postgres: tudo roda em containers.
+
+### 2. Baixe o projeto
 ```bash
-cp .env.example .env          # edite as senhas e o JWT_SECRET (openssl rand -base64 48)
-docker compose up -d --build
+git clone https://github.com/1GustavoBorgonha1/aplicacao_tb_fnl_si.git marmifit
+cd marmifit
 ```
 
-| Serviço | Endereço |
+### 3. Crie o arquivo `.env` (senhas locais)
+O `.env` guarda as senhas e **nunca** vai para o Git. No **Git Bash** (Windows) ou no terminal (Linux/macOS), este comando cria o arquivo já com senhas aleatórias:
+```bash
+sed -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 16)|" \
+    -e "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n')|" \
+    .env.example > .env
+```
+O admin fica com o e-mail e a senha que estão no `.env` (`ADMIN_EMAIL` / `ADMIN_PASSWORD`; padrão `admin@marmifit.local` / `Admin12345`). Troque se quiser **antes** da primeira subida.
+
+### 4. Suba a aplicação
+```bash
+docker compose up -d --build     # a primeira vez demora alguns minutos (baixa e compila as imagens)
+docker compose ps                # db, backend e frontend devem ficar "healthy"
+```
+
+| O quê | Endereço |
 |---|---|
-| Aplicação | http://localhost:8080 |
-| Health check | http://localhost:8080/api/health |
-| Admin | e-mail/senha definidos em `ADMIN_EMAIL` / `ADMIN_PASSWORD` no `.env` |
+| **Aplicação** | **http://localhost:8080** |
+| Health check | http://localhost:8080/api/health → `{"status":"ok"}` |
+| Login do admin | `ADMIN_EMAIL` / `ADMIN_PASSWORD` do `.env` |
 
 O banco **não** é exposto no host (rede interna). As imagens das marmitas ficam no volume `marmifit_uploads` (o "S3 local").
+
+### 5. Parar, ver logs e recomeçar
+```bash
+docker compose logs -f backend   # logs da API (eventos de auditoria têm "audit":true)
+docker compose down              # para tudo, mantendo os dados
+docker compose down -v           # para e APAGA banco e imagens (recomeça do zero)
+```
+
+### Problemas comuns
+| Sintoma | Solução |
+|---|---|
+| Docker Desktop: **"WSL is unresponsive"** | PowerShell **como administrador**: `winget install --id Microsoft.WSL -e --force` e reinicie o PC |
+| `port is already allocated` na 8080 | Mude `APP_PORT=8081` no `.env` e acesse http://localhost:8081 |
+| `required variable ... is missing` | O `.env` não foi criado (passo 3) ou falta algum valor |
+| Backend reiniciando / erro de senha do banco | A senha do banco foi trocada depois da primeira subida: `docker compose down -v` e suba de novo |
+| Login do admin não funciona | O admin é criado só na primeira subida; se mudou o `.env` depois, rode `docker compose down -v` |
+
+Quer testar também no **Kubernetes** (como na AWS)? Veja [k8s/README.md](k8s/README.md).
 
 ### Roteiro de demonstração
 1. Cadastre uma empresa em **Sou empresa** e faça login → aparece o aviso "aguardando aprovação".
@@ -95,6 +137,8 @@ specs/
 **Nova funcionalidade:** copie `specs/_template/` para `specs/006-nome/`, escreva a spec, revise, e só então implemente.
 
 ## Arquitetura
+
+![Arquitetura na AWS](docs/arquitetura-aws.png)
 
 ```
  navegador ──► frontend (Nginx :8080, não-root) ──► backend (Node/Express :3000, não-root) ──► Postgres

@@ -1,0 +1,38 @@
+# Overlay da AWS: cluster K3s (1 master + 3 workers), RDS PostgreSQL e S3.
+#
+# Antes do primeiro apply, no master:
+#   1. Preencha os valores marcados com TROQUE abaixo (saídas do Terraform).
+#   2. Crie o Secret direto no cluster (nenhum valor de segredo fica no Git):
+#        kubectl create namespace marmifit
+#        kubectl -n marmifit create secret generic backend-secret \
+#          --from-literal=DATABASE_URL='postgres://<usuario>:<senha>@<endpoint-rds>:5432/marmifit' \
+#          --from-literal=JWT_SECRET="$(openssl rand -base64 48)" \
+#          --from-literal=ADMIN_EMAIL='admin@marmifit.com.br' \
+#          --from-literal=ADMIN_PASSWORD='<senha-forte>'
+#   3. kubectl apply -k k8s/overlays/aws
+#
+# A pipeline atualiza só a imagem: kubectl -n marmifit set image deployment/backend backend=<img>:<sha>
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+
+images:
+  - name: marmifit-backend
+    newName: TROQUE-usuario-dockerhub/marmifit-backend
+    newTag: latest
+  - name: marmifit-frontend
+    newName: TROQUE-usuario-dockerhub/marmifit-frontend
+    newTag: latest
+
+configMapGenerator:
+  - name: backend-config
+    literals:
+      - PORT=3000
+      - DATABASE_SSL=true # TLS até o RDS (rds.force_ssl=1)
+      - STORAGE_DRIVER=s3 # credenciais via instance profile dos workers (sem access key)
+      - S3_BUCKET=TROQUE-bucket-imagens
+      - S3_PUBLIC_URL=https://TROQUE-bucket-imagens.s3.us-east-1.amazonaws.com
+      - AWS_REGION=us-east-1
+      - TRUST_PROXY=2 # ALB + Nginx
+      - LOG_LEVEL=info
