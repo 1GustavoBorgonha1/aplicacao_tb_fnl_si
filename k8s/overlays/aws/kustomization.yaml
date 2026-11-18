@@ -2,7 +2,7 @@
 #
 # Antes do primeiro apply, no master:
 #   1. Preencha os valores marcados com TROQUE abaixo (saídas do Terraform).
-#   2. Crie o Secret (NUNCA commitar) — modelo em secret.example.yaml:
+#   2. Crie o Secret direto no cluster (nenhum valor de segredo fica no Git):
 #        kubectl create namespace marmifit
 #        kubectl -n marmifit create secret generic backend-secret \
 #          --from-literal=DATABASE_URL='postgres://<usuario>:<senha>@<endpoint-rds>:5432/marmifit' \
