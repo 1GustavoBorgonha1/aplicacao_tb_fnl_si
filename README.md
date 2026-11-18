@@ -7,6 +7,8 @@ O cliente escolhe um restaurante, vê o catálogo, faz o pedido e **retira no lo
 > sistema simples desenvolvido com **SDD**, em Docker, com pipeline **GitHub Actions** e scanner de segurança (**SonarQube**) no processo de deploy, implantado na **AWS** com **Terraform** (VPC segmentada, cluster **K3s**, RDS PostgreSQL, S3, ALB + WAF).
 > A ideia de negócio vem do trabalho de Empreendedorismo & Inovação (MarmiFit).
 
+> 📑 **Apresentação e documentação do trabalho:** [slides (PowerPoint)](docs/apresentacao/MarmiFit-apresentacao.pptx) · [documento técnico (PDF)](docs/apresentacao/MarmiFit-documentacao.pdf)
+
 ## Sumário
 - [Perfis e funcionalidades](#perfis-e-funcionalidades)
 - [Como rodar](#como-rodar)
