@@ -95,6 +95,7 @@ npm run lint                              # ESLint (flat config)
 
 # Frontend
 cd frontend && npm run build              # deve compilar sem erros
+npm test                                  # testes de componentes (Vitest + Testing Library, jsdom)
 npm run dev                               # :5173, proxy /api e /uploads → :3000
 
 # Auditoria de dependências (o CI falha em high/critical)
@@ -107,7 +108,7 @@ kubectl apply -k k8s/overlays/local       # exige k8s/overlays/local/*.local.env
 kubectl -n marmifit port-forward svc/frontend 30080:8080   # NodePort não chega ao Windows no modo kind
 ```
 
-Antes de considerar uma tarefa pronta: `npm run lint` e os testes do backend verdes, `npm run build` do frontend ok e `npm audit` sem high/critical.
+Antes de considerar uma tarefa pronta: `npm run lint` e os testes do backend verdes, `npm test` e `npm run build` do frontend ok e `npm audit` sem high/critical.
 
 **SonarQube local** (`docker-compose.sonar.yml`) precisa de ~2–3 GB de RAM livres e de `vm.max_map_count ≥ 524288`. Na máquina original (6 GB) o usuário interrompeu a tentativa; prefira a análise do CI e só suba localmente se a máquina aguentar e o usuário concordar.
 
@@ -215,5 +216,5 @@ O Quality Gate do SonarCloud avalia o **código novo** (cobertura ≥ 80%, sem b
 - **AWS (colega):** Terraform em `infra/terraform/` seguindo `infra/README.md`; ao receber os outputs, preencher os `TROQUE` de `k8s/overlays/aws` e fazer o primeiro deploy (`docs/deploy-aws.md`).
 - **SonarQube:** achado "Use VARCHAR2 instead of CHAR" em `001_init.sql` é falso positivo (regra Oracle) — marcar como *False Positive* no SonarCloud. Achados do `ci.yml` (senha do Postgres de teste, `--ignore-scripts`, actions sem SHA fixo) ficam com a mudança da pipeline.
 - **Dependabot:** PRs majors abertas; avaliar em grupos (Actions → Docker → backend → frontend), uma por vez, com lint/testes/build/audit. Node 26 já é LTS (out/2026) → padronizar Docker, CI e `engines`.
-- **Testes do frontend** (Vitest + Testing Library): ainda não existem; a cobertura do Sonar exclui `frontend/**`.
+- **Testes do frontend**: existem (ADR-16, `frontend/tests/`), mas cobrem só os módulos centrais (api, auth, Login, Minha conta, PedidoCard). Tela nova ou alterada precisa de teste: o Quality Gate exige 80% de cobertura no código novo também no frontend.
 - **Proteção da `main`:** exigir PR e checks verdes (sem exigir aprovação de outra pessoa).
