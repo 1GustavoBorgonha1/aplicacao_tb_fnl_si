@@ -203,7 +203,7 @@ jobs:
       # de fora com o OWASP ZAP baseline: headers, cookies, CSP, XSS refletido, vazamento de informação.
       # Script e regras (com justificativas) em .zap/.
       - name: OWASP ZAP baseline scan
-        run: bash .zap/dast.sh -I
+        run: bash .zap/dast.sh
 
       - name: Publicar relatório do ZAP
         if: always()

@@ -1,1 +1,5 @@
-# Regras do OWASP ZAP (zap-baseline.py -c). Formato: id<TAB>IGNORE|WARN|FAIL<TAB>justificativa
+# Regras do OWASP ZAP (zap-baseline.py -c regras.tsv). Formato: id<TAB>IGNORE|WARN|FAIL<TAB>justificativa
+# Política: a pipeline falha em qualquer alerta WARN ou FAIL; só ficam IGNORE os itens abaixo, com justificativa.
+10109	IGNORE	(Modern Web Application) informativo: só avisa que a interface é uma SPA em React
+10027	IGNORE	(Suspicious Comments) comentários do bundle de terceiros (React) no JS minificado, sem dados sensíveis
+10049	IGNORE	(Storable/Cacheable Content) assets com hash no nome são cacheáveis de propósito; HTML usa no-cache
