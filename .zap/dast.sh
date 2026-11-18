@@ -18,18 +18,16 @@ if [[ ! -f .env ]]; then
 fi
 docker compose up -d --build --wait --wait-timeout 300
 
-# O ZAP escreve os relatórios dentro do próprio container; depois copiamos para ./zap
-# (sem abrir permissão de escrita numa pasta do host). -j: spider AJAX, a interface é uma SPA.
-docker rm -f marmifit-zap >/dev/null 2>&1 || true
+# Pasta dos relatórios: escrita liberada só para o usuário do ZAP (uid 1000) via ACL,
+# em vez de chmod 777 (achado do SonarQube). No Docker Desktop o bind mount já é gravável.
+mkdir -p zap
+cp .zap/regras.tsv zap/
+setfacl -m u:1000:rwx zap 2>/dev/null || true
+
+# -j: spider AJAX, a interface é uma SPA. Código de saída: 0 ok, 1 FAIL, 2 WARN, 3 erro.
 set +e
-docker run --name marmifit-zap --network host \
-  -v "$PWD/.zap/regras.tsv:/zap/wrk/regras.tsv:ro" "$ZAP_IMAGE" \
-  zap-baseline.py -t "$ALVO" -c regras.tsv -j -r relatorio-zap.html -J relatorio-zap.json "$@"
+docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" "$ZAP_IMAGE"   zap-baseline.py -t "$ALVO" -c regras.tsv -j -r relatorio-zap.html -J relatorio-zap.json "$@"
 rc=$?
 set -e
-mkdir -p zap
-docker cp marmifit-zap:/zap/wrk/relatorio-zap.html zap/ >/dev/null
-docker cp marmifit-zap:/zap/wrk/relatorio-zap.json zap/ >/dev/null
-docker rm marmifit-zap >/dev/null
 echo "ZAP terminou com código $rc (0 = sem alertas; 1 = FAIL; 2 = WARN; 3 = erro)"
 exit "$rc"
