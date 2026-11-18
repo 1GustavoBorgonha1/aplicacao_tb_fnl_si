@@ -1,0 +1,39 @@
+# Overlay k3d: simulação local da arquitetura AWS num K3s de verdade (rodando em containers).
+#   ALB  → load balancer do k3d na porta 30080 (NodePort em todos os nós)
+#   K3s  → 1 server (master, sem workload) + 3 agents (workers)
+#   RDS  → Postgres no cluster (components/postgres)
+#   S3   → adobe/s3mock (STORAGE_DRIVER=s3 com S3_ENDPOINT)
+# Ao contrário do Docker Desktop, o K3s aplica as NetworkPolicies. Passo a passo em k8s/README.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: marmifit
+resources:
+  - ../../base
+  - s3mock.yaml
+components:
+  - ../../components/postgres
+
+images:
+  - name: marmifit-backend
+    newTag: local
+  - name: marmifit-frontend
+    newTag: local
+
+configMapGenerator:
+  - name: backend-config
+    literals:
+      - PORT=3000
+      - DATABASE_SSL=false
+      - STORAGE_DRIVER=s3
+      - S3_BUCKET=marmifit-imagens
+      - S3_ENDPOINT=http://s3:9090
+      - AWS_REGION=us-east-1
+      - TRUST_PROXY=2 # load balancer do k3d + Nginx, como ALB + Nginx na AWS
+      - LOG_LEVEL=info
+
+# Segredos só de teste, lidos de arquivos fora do Git (copie os .example).
+secretGenerator:
+  - name: backend-secret
+    envs: [backend.local.env]
+  - name: db-secret
+    envs: [db.local.env]

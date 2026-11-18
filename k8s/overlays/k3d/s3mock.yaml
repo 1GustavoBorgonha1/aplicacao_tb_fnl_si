@@ -1,0 +1,69 @@
+# S3 compatível (adobe/s3mock) no papel do bucket de imagens. Só para simulação local.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: s3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: s3
+  template:
+    metadata:
+      labels:
+        app: s3
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: s3mock
+          image: adobe/s3mock:5.2.3
+          env:
+            - { name: COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS, value: marmifit-imagens }
+          ports:
+            - { name: http, containerPort: 9090 }
+          readinessProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: s3
+spec:
+  selector:
+    app: s3
+  ports:
+    - { name: http, port: 9090, targetPort: http }
+---
+# Bucket só aceita o backend (na AWS: bucket privado para escrita, IAM do worker).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: s3-from-backend
+spec:
+  podSelector:
+    matchLabels: { app: s3 }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: backend }
+      ports:
+        - { port: 9090, protocol: TCP }

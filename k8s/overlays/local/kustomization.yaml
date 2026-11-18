@@ -5,8 +5,9 @@ kind: Kustomization
 namespace: marmifit
 resources:
   - ../../base
-  - postgres.yaml
   - uploads-pvc.yaml
+components:
+  - ../../components/postgres
 
 images:
   - name: marmifit-backend
