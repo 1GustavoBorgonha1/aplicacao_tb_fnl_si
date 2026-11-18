@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, errorText } from '../api.js';
+import HorarioRetirada, { HORARIO_PADRAO } from '../components/HorarioRetirada.jsx';
 import { Alert, Field } from '../components/ui.jsx';
 import { SENHA_HINT } from './CadastroCliente.jsx';
 
-const VAZIO = { nome: '', cnpj: '', telefone: '', endereco: '', horario: '' };
+const VAZIO = { nome: '', cnpj: '', telefone: '', endereco: '', ...HORARIO_PADRAO };
 
 export default function CadastroEmpresa() {
   const navigate = useNavigate();
@@ -59,14 +60,13 @@ export default function CadastroEmpresa() {
           <Field label="Telefone">
             <input required inputMode="tel" placeholder="(47) 99999-0000" value={rest.telefone} onChange={setR('telefone')} />
           </Field>
-          <Field label="Horário de retirada">
-            <input maxLength={100} placeholder="Seg a sex, 11h às 14h" value={rest.horario} onChange={setR('horario')} />
-          </Field>
         </div>
         <Field label="Endereço de retirada">
           <input required minLength={5} maxLength={200} value={rest.endereco} onChange={setR('endereco')} />
         </Field>
       </fieldset>
+
+      <HorarioRetirada value={rest} onChange={(h) => setRest({ ...rest, ...h })} />
 
       <button type="submit" className="btn">Cadastrar empresa</button>
       <p className="muted">

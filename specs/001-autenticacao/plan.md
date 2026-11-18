@@ -17,7 +17,7 @@
 ## Middlewares
 - `requireAuth` — valida JWT, busca usuário no banco, rejeita se `ativo=false` (ADR-04), popula `req.user`.
 - `requireRole(...roles)` — 403 se `req.user.role` não estiver na lista.
-- `loginLimiter` / `registerLimiter` — `express-rate-limit`, configurável por env (`LOGIN_RATE_LIMIT`).
+- `loginLimiter` / `registerLimiter` — `express-rate-limit`, configurável por env (`LOGIN_RATE_LIMIT`, padrão 10). O `loginLimiter` usa `skipSuccessfulRequests: true`: só tentativas com falha (status ≥ 400) contam.
 
 ## Arquivos
 - `backend/src/routes/auth.js`, `backend/src/middlewares/auth.js`, `backend/src/services/password.js`, `backend/src/services/token.js`

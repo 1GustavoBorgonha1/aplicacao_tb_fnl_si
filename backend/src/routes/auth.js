@@ -7,6 +7,7 @@ import { badRequest, conflict, forbidden, unauthorized } from '../errors.js';
 import { audit } from '../logger.js';
 import { DUMMY_HASH, hashPassword, verifyPassword } from '../services/password.js';
 import { signToken } from '../services/token.js';
+import { formatarHorario } from '../horario.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { parse, texto } from '../validate.js';
 
@@ -25,15 +26,38 @@ const soDigitos = (min, max) =>
 
 // Campos desconhecidos (ex.: "role") são descartados pelo zod → CA-001-11.
 const clienteSchema = z.object({ nome: texto(2, 100), email, senha });
-export const restauranteDadosSchema = z.object({
+// CA-002-06/07 — horário de retirada estruturado (o texto "horario" é gerado no servidor).
+const hora = z.preprocess(
+  (v) => (v === '' || v === undefined ? null : v),
+  z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'use o formato HH:MM').nullable(),
+);
+const restauranteBase = z.object({
   nome: texto(2, 100),
   telefone: soDigitos(10, 11),
   endereco: texto(5, 200),
-  horario: texto(0, 100).default(''),
+  dias_retirada: z
+    .array(z.coerce.number().int().min(0).max(6))
+    .min(1, 'escolha ao menos um dia')
+    .max(7)
+    .refine((d) => new Set(d).size === d.length, 'dias repetidos')
+    .default([1, 2, 3, 4, 5]),
+  abre_as: hora,
+  fecha_as: hora,
 });
+function janelaValida(d, ctx) {
+  if ((d.abre_as === null) !== (d.fecha_as === null)) {
+    ctx.addIssue({ code: 'custom', path: ['fecha_as'], message: 'informe abertura e fechamento' });
+  } else if (d.abre_as !== null && d.abre_as >= d.fecha_as) {
+    ctx.addIssue({ code: 'custom', path: ['fecha_as'], message: 'deve ser depois da abertura' });
+  }
+}
+export const restauranteDadosSchema = restauranteBase.superRefine(janelaValida);
 const restauranteSchema = clienteSchema.extend({
-  restaurante: restauranteDadosSchema.extend({ cnpj: soDigitos(14, 14) }),
+  restaurante: restauranteBase.extend({ cnpj: soDigitos(14, 14) }).superRefine(janelaValida),
 });
+
+/** Texto de exibição gerado a partir dos campos estruturados. */
+export const horarioTexto = (r) => formatarHorario(r.dias_retirada, r.abre_as, r.fecha_as);
 const loginSchema = z.object({ email, senha: z.string().min(1).max(200) });
 // Spec 006 — a política vale só para a nova senha (CA-006-03); a atual segue o formato do login.
 const trocaSenhaSchema = z.object({ senha_atual: z.string().min(1).max(200), nova_senha: senha });
@@ -44,9 +68,11 @@ export function authRouter({ loginLimit, loginWindowMin }) {
   const router = Router();
 
   // RS-001-04 — Rate limit contra força bruta (Hydra) e cadastro em massa.
+  // Só tentativas com falha contam (CA-001-10): quem acerta a senha nunca é bloqueado.
   const loginLimiter = rateLimit({
     windowMs: loginWindowMin * 60_000,
     limit: loginLimit,
+    skipSuccessfulRequests: true,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: { erro: 'Muitas tentativas. Tente novamente mais tarde.' },
@@ -110,9 +136,9 @@ export function authRouter({ loginLimit, loginWindowMin }) {
       );
       const r = data.restaurante;
       const rest = await db.query(
-        `INSERT INTO restaurants (user_id, nome, cnpj, telefone, endereco, horario)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, nome, status`,
-        [u.rows[0].id, r.nome, r.cnpj, r.telefone, r.endereco, r.horario],
+        `INSERT INTO restaurants (user_id, nome, cnpj, telefone, endereco, horario, dias_retirada, abre_as, fecha_as)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, nome, status`,
+        [u.rows[0].id, r.nome, r.cnpj, r.telefone, r.endereco, horarioTexto(r), r.dias_retirada, r.abre_as, r.fecha_as],
       );
       return { user: u.rows[0], restaurante: rest.rows[0] };
     });

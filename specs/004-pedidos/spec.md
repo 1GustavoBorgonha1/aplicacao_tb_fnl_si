@@ -30,6 +30,7 @@ recebido ──► em_preparo ──► pronto_retirada ──► retirado
 - **CA-004-07** — Transição de status inválida (ex.: `recebido → retirado`) → **409**.
 - **CA-004-08** — Cliente cancela em `recebido` → **200**; em outro status → **409**.
 - **CA-004-09** — O pedido e seus itens são gravados em uma única transação.
+- **CA-004-10** — Se o restaurante tem horário de retirada configurado (spec 002, CA-002-06), `retirada_em` precisa cair em um dos `dias_retirada` e entre `abre_as` e `fecha_as` (inclusive), no fuso **America/Sao_Paulo**; caso contrário **400** com o horário do restaurante na mensagem. Sem horário configurado vale apenas o CA-004-04.
 
 ## 5. Requisitos de segurança
 - **RS-004-01** — Total recalculado no servidor (manipulação de preço / *parameter tampering*).

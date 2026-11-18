@@ -30,7 +30,7 @@ Prob. 5            |        |        |        |        |        |
 
 | ID | Risco | P | I | Nível | Tratamento | Ação / Controle |
 |---|---|---|---|---|---|---|
-| R01 | Força bruta / credential stuffing no login | 4 | 4 | **Alto (16)** | Mitigar | Rate limit app + Nginx + WAF; política de senha; logs `login_failed`; troca de senha pelo usuário com revogação das sessões (spec 006) |
+| R01 | Força bruta / credential stuffing no login | 4 | 4 | **Alto (16)** | Mitigar | Rate limit app (10 falhas / 15 min por IP; acertos não contam) + Nginx (2 r/s) + WAF; política de senha; logs `login_failed`; troca de senha pelo usuário com revogação das sessões (spec 006) |
 | R11 | Senha padrão do admin (vinda do `.env`) mantida em produção | 3 | 5 | **Alto (15)** | Mitigar | Tela **Minha conta** (spec 006): trocar a senha do admin no primeiro acesso; procedimento no [deploy](../deploy-aws.md) |
 | R02 | Vazamento do banco (SQLi ou RDS exposto) | 3 | 5 | **Alto (15)** | Mitigar | Queries parametrizadas; RDS em subnet privada, SG só da EC2; criptografia em repouso |
 | R03 | IDOR — acesso a dados de outro restaurante/cliente | 3 | 4 | **Alto (12)** | Mitigar | Verificação de dono em todas as queries; testes CA-003-03, CA-004-05/06 |

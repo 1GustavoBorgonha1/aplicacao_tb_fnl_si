@@ -12,7 +12,7 @@ const schema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT_SECRET deve ter pelo menos 32 caracteres'),
   JWT_EXPIRES_IN: z.string().default('2h'),
   BCRYPT_COST: z.coerce.number().int().min(4).max(15).default(12),
-  LOGIN_RATE_LIMIT: z.coerce.number().int().positive().default(5),
+  LOGIN_RATE_LIMIT: z.coerce.number().int().positive().default(10), // falhas de login por IP na janela
   LOGIN_RATE_WINDOW_MIN: z.coerce.number().int().positive().default(15),
   ADMIN_NAME: z.string().default('Administrador'),
   ADMIN_EMAIL: z.string().email().optional(),

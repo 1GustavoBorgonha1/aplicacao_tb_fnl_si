@@ -37,8 +37,8 @@ Recomendado: um usuário próprio da aplicação (dono do banco `marmifit`), sep
 users (id, nome, email UNIQUE, senha_hash, role[admin|restaurante|cliente], ativo, token_versao, criado_em)
   │1
   │1
-restaurants (id, user_id UNIQUE→users, nome, cnpj UNIQUE, telefone, endereco, horario,
-             status[pendente|aprovado|bloqueado], criado_em)
+restaurants (id, user_id UNIQUE→users, nome, cnpj UNIQUE, telefone, endereco, horario (texto gerado),
+             dias_retirada[0..6], abre_as, fecha_as, status[pendente|aprovado|bloqueado], criado_em)
   │1
   │N
 meals (id, restaurant_id→restaurants, nome, descricao, preco_centavos, kcal, proteina_g,

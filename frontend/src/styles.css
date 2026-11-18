@@ -103,6 +103,8 @@ fieldset { border: 1px solid var(--border); border-radius: var(--radius); paddin
 legend { font-weight: 600; padding: 0 6px; }
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .check { display: flex; gap: 8px; align-items: center; }
+.dias { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.dia { font-weight: 500; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
 

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { api, errorText } from '../../api.js';
+import MoneyInput from '../../components/MoneyInput.jsx';
 import StatusEmpresa from '../../components/StatusEmpresa.jsx';
 import { Alert, Field, useLoad } from '../../components/ui.jsx';
-import { brl, CATEGORIAS, toCentavos } from '../../format.js';
+import { brl, CATEGORIAS, PRECO_MAX_CENTAVOS } from '../../format.js';
 
-const VAZIO = { nome: '', descricao: '', preco: '', kcal: '', proteina_g: '', categoria: 'tradicional', disponivel: true };
+const VAZIO = { nome: '', descricao: '', preco_centavos: null, kcal: '', proteina_g: '', categoria: 'tradicional', disponivel: true };
 const MAX_IMG = 2 * 1024 * 1024;
 
 // Spec 003 — HU-003-01/02.
@@ -29,7 +30,7 @@ export default function MinhasMarmitas() {
     setForm({
       nome: m.nome,
       descricao: m.descricao,
-      preco: (m.preco_centavos / 100).toFixed(2).replace('.', ','),
+      preco_centavos: m.preco_centavos,
       kcal: m.kcal ?? '',
       proteina_g: m.proteina_g ?? '',
       categoria: m.categoria,
@@ -49,7 +50,7 @@ export default function MinhasMarmitas() {
     const fd = new FormData();
     fd.append('nome', form.nome);
     fd.append('descricao', form.descricao);
-    fd.append('preco_centavos', String(toCentavos(form.preco)));
+    fd.append('preco_centavos', String(form.preco_centavos ?? ''));
     fd.append('kcal', form.kcal);
     fd.append('proteina_g', form.proteina_g);
     fd.append('categoria', form.categoria);
@@ -107,8 +108,13 @@ export default function MinhasMarmitas() {
                 ))}
               </select>
             </Field>
-            <Field label="Preço (R$)">
-              <input required inputMode="decimal" placeholder="25,90" pattern="\d{1,4}([,.]\d{1,2})?" value={form.preco} onChange={set('preco')} />
+            <Field label="Preço" hint="Digite só os números: 2590 vira R$ 25,90 (máx. R$ 1.000,00).">
+              <MoneyInput
+                required
+                max={PRECO_MAX_CENTAVOS}
+                value={form.preco_centavos}
+                onChange={(preco_centavos) => setForm({ ...form, preco_centavos })}
+              />
             </Field>
             <Field label="Calorias (kcal)">
               <input type="number" min={0} max={5000} value={form.kcal} onChange={set('kcal')} />
