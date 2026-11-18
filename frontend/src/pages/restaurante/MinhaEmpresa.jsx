@@ -59,7 +59,7 @@ export default function MinhaEmpresa() {
         <Field label="Horário de retirada">
           <input maxLength={100} value={form.horario} onChange={set('horario')} />
         </Field>
-        <button className="btn" disabled={r.status === 'bloqueado'}>
+        <button type="submit" className="btn" disabled={r.status === 'bloqueado'}>
           Salvar
         </button>
       </form>

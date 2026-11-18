@@ -30,7 +30,7 @@ export default function MeusPedidos() {
         {data?.pedidos.map((p) => (
           <PedidoCard key={p.id} pedido={p} titulo={p.restaurante_nome} subtitulo={`📍 ${p.restaurante_endereco}`}>
             {p.status === 'recebido' && (
-              <button className="btn btn-danger btn-sm" onClick={() => cancelar(p.id)}>
+              <button type="button" className="btn btn-danger btn-sm" onClick={() => cancelar(p.id)}>
                 Cancelar pedido
               </button>
             )}

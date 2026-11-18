@@ -39,7 +39,7 @@ export default function Login() {
       <Field label="Senha">
         <input type="password" autoComplete="current-password" required value={form.senha} onChange={set('senha')} />
       </Field>
-      <button className="btn" disabled={enviando}>
+      <button type="submit" className="btn" disabled={enviando}>
         {enviando ? 'Entrando…' : 'Entrar'}
       </button>
       <p className="muted">

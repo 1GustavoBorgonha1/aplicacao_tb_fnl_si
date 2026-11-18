@@ -84,7 +84,7 @@ export default function MinhasMarmitas() {
       <StatusEmpresa />
       <div className="row-between">
         <h1>Minhas marmitas</h1>
-        <button className="btn" onClick={novo}>
+        <button type="button" className="btn" onClick={novo}>
           + Nova marmita
         </button>
       </div>
@@ -132,7 +132,7 @@ export default function MinhasMarmitas() {
             </label>
           )}
           <div className="actions">
-            <button className="btn">Salvar</button>
+            <button type="submit" className="btn">Salvar</button>
             <button type="button" className="btn btn-ghost" onClick={() => setAberto(false)}>
               Cancelar
             </button>
@@ -162,10 +162,10 @@ export default function MinhasMarmitas() {
                 <td>{brl(m.preco_centavos)}</td>
                 <td>{m.disponivel ? 'Disponível' : 'Indisponível'}</td>
                 <td className="actions">
-                  <button className="btn btn-sm btn-ghost" onClick={() => editar(m)}>
+                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => editar(m)}>
                     Editar
                   </button>
-                  <button className="btn btn-sm btn-danger" onClick={() => remover(m)}>
+                  <button type="button" className="btn btn-sm btn-danger" onClick={() => remover(m)}>
                     Remover
                   </button>
                 </td>

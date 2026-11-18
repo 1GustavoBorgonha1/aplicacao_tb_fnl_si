@@ -34,7 +34,7 @@ export default function Painel() {
       <h1>Painel administrativo</h1>
       <div className="tabs" role="tablist">
         {ABAS.map(([k, l]) => (
-          <button key={k} role="tab" aria-selected={aba === k} className={`tab ${aba === k ? 'active' : ''}`} onClick={() => setAba(k)}>
+          <button type="button" key={k} role="tab" aria-selected={aba === k} className={`tab ${aba === k ? 'active' : ''}`} onClick={() => setAba(k)}>
             {l}
           </button>
         ))}
@@ -117,12 +117,12 @@ function Empresas({ acao }) {
                 </td>
                 <td className="actions">
                   {r.status !== 'aprovado' && (
-                    <button className="btn btn-sm" onClick={set(r.id, 'aprovado')}>
+                    <button type="button" className="btn btn-sm" onClick={set(r.id, 'aprovado')}>
                       Aprovar
                     </button>
                   )}
                   {r.status !== 'bloqueado' && (
-                    <button className="btn btn-sm btn-danger" onClick={set(r.id, 'bloqueado')}>
+                    <button type="button" className="btn btn-sm btn-danger" onClick={set(r.id, 'bloqueado')}>
                       Bloquear
                     </button>
                   )}
@@ -167,7 +167,7 @@ function Usuarios({ acao }) {
                 <td>{u.ativo ? 'Ativo' : 'Desativado'}</td>
                 <td>
                   {u.id !== user.id && (
-                    <button className={`btn btn-sm ${u.ativo ? 'btn-danger' : ''}`} onClick={toggle(u)}>
+                    <button type="button" className={`btn btn-sm ${u.ativo ? 'btn-danger' : ''}`} onClick={toggle(u)}>
                       {u.ativo ? 'Desativar' : 'Ativar'}
                     </button>
                   )}
@@ -230,7 +230,7 @@ function Marmitas({ acao }) {
                 <td>{CATEGORIAS[m.categoria]}</td>
                 <td>{brl(m.preco_centavos)}</td>
                 <td>
-                  <button className={`btn btn-sm ${m.disponivel ? 'btn-danger' : ''}`} onClick={toggle(m)}>
+                  <button type="button" className={`btn btn-sm ${m.disponivel ? 'btn-danger' : ''}`} onClick={toggle(m)}>
                     {m.disponivel ? 'Ocultar' : 'Liberar'}
                   </button>
                 </td>

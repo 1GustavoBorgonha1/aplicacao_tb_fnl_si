@@ -68,7 +68,7 @@ export default function CadastroEmpresa() {
         </Field>
       </fieldset>
 
-      <button className="btn">Cadastrar empresa</button>
+      <button type="submit" className="btn">Cadastrar empresa</button>
       <p className="muted">
         É cliente? <Link to="/cadastro/cliente">Crie uma conta de cliente</Link>
       </p>
