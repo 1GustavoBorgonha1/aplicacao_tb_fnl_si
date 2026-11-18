@@ -7,7 +7,7 @@ Para a visão do usuário/avaliador, veja o [README.md](README.md).
 
 Marketplace simples de **marmitas fitness**: restaurantes cadastram marmitas, clientes escolhem um restaurante, montam o pedido e **retiram no local** (pagamento na retirada — o sistema **não** processa nem guarda dados de pagamento, e **não há entrega**).
 
-Contexto acadêmico: trabalho de **Auditoria e Segurança de Sistemas** (UNIDAVI), atividade da Aula 7 — SSDLC: sistema simples feito com **SDD**, em Docker, com pipeline GitHub Actions e **scanner de segurança (SonarQube)** no deploy, preparado para AWS (EC2 pública + privada, RDS, S3, ALB + WAF). A ideia de negócio vem do trabalho de Empreendedorismo & Inovação. Segurança é o critério de avaliação: toda mudança deve preservar ou reforçar os controles existentes.
+Contexto acadêmico: trabalho de **Auditoria e Segurança de Sistemas** (UNIDAVI), atividade da Aula 7 — SSDLC: sistema simples feito com **SDD**, em Docker, com pipeline GitHub Actions e **scanner de segurança (SonarQube)** no deploy, implantado na AWS conforme o diagrama `docs/arquitetura-aws.png`: **Terraform** (VPC com subnet pública/privada, NAT), **K3s** (1 master + 3 workers), RDS PostgreSQL, S3, ALB + WAF. Divisão do grupo: o usuário cuida da aplicação, dos manifests `k8s/` e da pipeline; um colega faz o Terraform/K3s em `infra/terraform/`. A ideia de negócio vem do trabalho de Empreendedorismo & Inovação. Segurança é o critério de avaliação: toda mudança deve preservar ou reforçar os controles existentes.
 
 ### Perfis
 | Perfil | Pode |
@@ -22,7 +22,9 @@ Pedido: `recebido → em_preparo → pronto_retirada → retirado`, ou `cancelad
 
 ## Decisões fixas (não reverter sem o usuário pedir)
 - **SonarQube** é o scanner de segurança. **Não usar Trivy.**
-- **Sem Terraform/IaC**: a AWS é provisionada manualmente seguindo `docs/deploy-aws.md`.
+- **Infraestrutura AWS via Terraform** em `infra/terraform/` (feito pelo colega, por PR). Contrato app ↔ infra em `infra/README.md` (ADR-12).
+- **Orquestração: K3s** com manifests Kustomize em `k8s/` (ADR-13). **Registro: Docker Hub** (ADR-14). **Deploy: SSM Run Command + GitHub OIDC** (ADR-15) — sem SSH e sem access key.
+- **Banco é PostgreSQL** (RDS PostgreSQL 16, porta 5432). O diagrama original dizia MySQL; o usuário decidiu manter Postgres.
 - Imagens em **pasta local** no dev (`STORAGE_DRIVER=local`) e **S3** na AWS; Postgres em container no dev e **RDS** na AWS. A troca é **só por variável de ambiente**, nunca por mudança de código.
 - Stack: Node 22 + Express 5 (backend), React 19 + Vite + React Router 7 (frontend), Postgres 16, zod 4.
 - Documentação e textos da UI em **português**.
@@ -71,7 +73,7 @@ O `.env` fica na raiz, é lido pelo `docker-compose.yml` e **nunca é commitado*
 
 Variáveis que existem só no backend e já têm default (não precisam ir no `.env` local): `JWT_EXPIRES_IN=2h`, `BCRYPT_COST=12`, `LOGIN_RATE_LIMIT=5`, `LOGIN_RATE_WINDOW_MIN=15`, `TRUST_PROXY=1`, `LOG_LEVEL=info`, `STORAGE_DRIVER=local`. Lista completa e validação em `backend/src/config.js`.
 
-**Na AWS** o `.env` é outro: na EC2 privada use `deploy/backend.env.example` (`DATABASE_URL` do RDS, `S3_BUCKET`, `S3_PUBLIC_URL` do CloudFront, `chmod 600`). Na EC2 pública, defina `GH_REPO=1gustavoborgonha1/aplicacao_tb_fnl_si` e `BACKEND_IP=<ip privado do backend>`. Veja `docs/deploy-aws.md`.
+**Na AWS** não há `.env`: a configuração vem do ConfigMap gerado em `k8s/overlays/aws/kustomization.yaml` (bucket, região, `DATABASE_SSL=true`, `TRUST_PROXY=2`) e do Secret `backend-secret`, criado no master com `kubectl create secret` (nunca em arquivo versionado). Veja `docs/deploy-aws.md`.
 
 ## Comandos
 
@@ -97,6 +99,12 @@ npm run dev                               # :5173, proxy /api e /uploads → :30
 
 # Auditoria de dependências (o CI falha em high/critical)
 npm audit --omit=dev --audit-level=high   # rodar em backend/ e frontend/
+
+# Kubernetes local (Docker Desktop → Settings → Kubernetes, modo kind)
+docker build -t marmifit-backend:local --target runtime backend
+docker build -t marmifit-frontend:local frontend
+kubectl apply -k k8s/overlays/local       # exige k8s/overlays/local/*.local.env (copiar dos .example)
+kubectl -n marmifit port-forward svc/frontend 30080:8080   # NodePort não chega ao Windows no modo kind
 ```
 
 Antes de considerar uma tarefa pronta: `npm run lint` e os testes do backend verdes, `npm run build` do frontend ok e `npm audit` sem high/critical.
@@ -132,9 +140,11 @@ frontend/
   nginx.conf + proxy.inc + security-headers.inc
 docs/seguranca/         política/LGPD, OWASP, matriz de riscos, hardening, criptografia
 docs/continuidade/      PCN, resposta a incidentes, DR
-docs/deploy-aws.md      roteiro manual da AWS
-deploy/                 compose.backend.yml (EC2 privada), compose.frontend.yml (EC2 pública)
-.github/workflows/ci.yml   test → sonarqube (Quality Gate) + audit → build (GHCR) → deploy
+docs/deploy-aws.md      runbook AWS (Terraform → K3s → checklist → destroy)
+docs/arquitetura-aws.png   diagrama da arquitetura (parte 1 do trabalho)
+k8s/                    Kustomize: base/ (backend, frontend, NetworkPolicy, namespace restricted) + overlays local/aws
+infra/                  README.md (contrato com o Terraform), database/ (schema.sql + requisitos do RDS), terraform/ (colega)
+.github/workflows/ci.yml   test → sonarqube (Quality Gate) + audit → build → deploy
 ```
 
 ## Fluxo de trabalho SDD (obrigatório)
@@ -180,7 +190,7 @@ deploy/                 compose.backend.yml (EC2 privada), compose.frontend.yml 
 ## Armadilhas conhecidas
 
 - **Nginx:** `add_header` não é herdado por um `location` que define o seu próprio. Em todo bloco com `add_header`, inclua `/etc/nginx/conf.d/security-headers.inc`. Os headers equivalentes do helmet são removidos no proxy (`proxy_hide_header` em `proxy.inc`) para não duplicar.
-- O container do frontend é `read_only`. Não use templates com `envsubst` do Nginx, porque eles escrevem em `conf.d`. Na AWS, o nome `backend` é resolvido via `extra_hosts` (`deploy/compose.frontend.yml`).
+- O container do frontend é `read_only`. Não use templates com `envsubst` do Nginx, porque eles escrevem em `conf.d`. No Kubernetes, o nome `backend` é o Service ClusterIP (`k8s/base/backend.yaml`); não renomeie o Service.
 - `TRUST_PROXY`: 1 localmente (Nginx), 2 na AWS (ALB + Nginx). O Nginx usa `real_ip` para limitar por IP do cliente.
 - `docker-compose.test.yml` **não** monta `coverage/` (o vitest tenta apagar a pasta e falha com EBUSY num ponto de montagem).
 - zod 4: use `z.flattenError(err)` (não `err.flatten()`); o locale `pt` é configurado em `validate.js`. O zod 3 foi barrado pelo `npm audit` (GHSA-mrhx-c7xc-m3w5) — não faça downgrade.
@@ -188,45 +198,22 @@ deploy/                 compose.backend.yml (EC2 privada), compose.frontend.yml 
 
 ## CI/CD
 
-`.github/workflows/ci.yml`: `test` (Postgres de serviço, lint, cobertura, build do front) → `sonarqube` (`sonar.qualitygate.wait=true`: gate reprovado falha o job) e `audit` → `build` (imagens no GHCR, push só fora de PR) → `deploy` (só na `main` com `vars.DEPLOY_ENABLED == 'true'`, environment `production`, SSH com ProxyJump para a EC2 privada).
-Secrets/vars esperados: `SONAR_TOKEN`, `SONAR_HOST_URL`, `vars.SONAR_ORGANIZATION` (SonarQube Cloud), `EC2_SSH_KEY`, `EC2_USER`, `EC2_PUBLIC_HOST`, `EC2_PRIVATE_HOST`.
-Os avisos da IDE sobre `env.IMAGE_PREFIX` no workflow são falsos positivos (a variável é definida em tempo de execução via `$GITHUB_ENV`).
+`.github/workflows/ci.yml`: `test` (Postgres de serviço, lint, cobertura, build do front) → `sonarqube` (`sonar.qualitygate.wait=true`: gate reprovado falha o job) e `audit` → `build` → `deploy` (só na `main` com `vars.DEPLOY_ENABLED == 'true'`, environment `production`).
+**Em migração** (agente/usuário principal): build/push para o **Docker Hub** (secrets `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN`) e deploy por **SSM + OIDC** com `kubectl set image` no master do K3s, conforme `infra/README.md` §8. Confira o `ci.yml` atual antes de descrevê-lo.
+Secrets/vars do Sonar (já configurados): `SONAR_TOKEN`, `SONAR_HOST_URL`, `vars.SONAR_ORGANIZATION=1gustavoborgonha1`; project key `1GustavoBorgonha1_aplicacao_tb_fnl_si`. A "Automatic Analysis" do SonarCloud deve ficar **desligada**.
+O Quality Gate do SonarCloud avalia o **código novo** (cobertura ≥ 80%, sem bugs/vulnerabilidades novas). Arquivos de exemplo com `PASSWORD: valor` em YAML são reprovados — documente segredos como comandos (`kubectl create secret`), não como arquivos.
 
 ## Git
 
-- Remoto: `origin` = https://github.com/1GustavoBorgonha1/aplicacao_tb_fnl_si (branch `main`). O nome das imagens no GHCR é em minúsculas: `ghcr.io/1gustavoborgonha1/aplicacao_tb_fnl_si/{backend,frontend}`.
+- Remoto: `origin` = https://github.com/1GustavoBorgonha1/aplicacao_tb_fnl_si (branch `main`). Fluxo: branch → PR → pipeline verde → squash merge.
 - Faça commit ou push **apenas quando o usuário pedir**. Mensagens em português.
 - Antes de commitar, confirme que `.env`, `node_modules/`, `dist/` e `coverage/` estão fora (`git add -A --dry-run`).
 
-## Pendências (estado em 2026-11-17)
+## Pendências (estado em 2026-11-18)
 
-> Plano combinado com o usuário: fases 0–5 (Sonar → Dependabot em grupos → spec 006 → testes do frontend → proteção da `main`). **AWS (fase 6) adiada** até o usuário explicar o contexto.
-> Máquina nova (Windows): Node 26 e Docker Desktop instalados pelo usuário; `gh` ainda precisa ser instalado (`winget install GitHub.cli`).
-> **Plano atual:** `C:/Users/gusta/.claude/plans/ajuste-o-plano-e-harmonic-hare.md` (K3s + Terraform do colega em `infra/terraform/`, RDS **PostgreSQL**, Docker Hub). Feito: `sonar.projectKey` trocada na `main` (falta o usuário criar os secrets do Sonar no repositório); WSL 3.0.5 reinstalado (precisa reiniciar); `infra/database/` (schema para o colega) criado nesta branch, sem commit.
-
-### 1. Pipeline vermelho: falta configurar o SonarQube ⚠️
-No primeiro push, os jobs **Testes e lint** e **Auditoria de dependências** passaram (59 testes no GitHub). O job **SonarQube** falhou em "Verificar configuração" porque os secrets não existem; por isso **build e deploy não rodaram**. É o gate funcionando, não um bug. Para resolver (o usuário precisa fazer; exige login no navegador):
-1. Entrar em https://sonarcloud.io com a conta do GitHub → *Analyze new project* → importar `aplicacao_tb_fnl_si`.
-2. No projeto: *Administration → Analysis Method* → **desligar "Automatic Analysis"** (senão conflita com a análise do CI).
-3. *My Account → Security* → gerar um token.
-4. No GitHub, em *Settings → Secrets and variables → Actions*:
-   - Secret `SONAR_TOKEN` = token gerado
-   - Secret `SONAR_HOST_URL` = `https://sonarcloud.io`
-   - Variable `SONAR_ORGANIZATION` = chave da organização no SonarCloud (geralmente `1gustavoborgonha1`)
-5. Conferir se a *Project Key* no SonarCloud é igual a `sonar.projectKey` em `sonar-project.properties` (hoje `marmifit`). O SonarCloud costuma sugerir `<org>_<repo>`; se for diferente, **ajuste o arquivo** para a key do SonarCloud.
-6. *Actions → CI/CD → Re-run all jobs* e confirmar que o Quality Gate passa. Se reprovar, corrigir os achados (não afrouxar o gate).
-
-### 2. PRs do Dependabot abertas (~10), não fazer merge em lote
-Abertas logo após o primeiro push; quase todas são **major** e podem quebrar: eslint 10 e @eslint/js 10, globals 17, pino 10, pino-http 11, vite 8, @vitejs/plugin-react 6, node 26-alpine (Docker), sonarqube-scan-action v8, docker/build-push-action v7, e outras. Todas falham no CI pelo mesmo motivo do item 1. Depois de resolver o SonarQube, avaliar **uma por vez**: ler o changelog, rodar lint/testes/build e checar o `npm audit`. Sugestão: aceitar primeiro as de GitHub Actions; o Node no Docker deve ficar em versão LTS (manter 22 ou ir para 24, não 26 se não for LTS). Se uma PR for recusada, feche com comentário explicando o motivo.
-
-### 3. Avisos do CI (não bloqueiam)
-- `actions/checkout@v4`, `setup-node@v4` e `upload-artifact@v4` usam Node 20 (depreciado); resolver aceitando as PRs de Actions do Dependabot ou subindo as majors.
-- `ubuntu-latest` vai migrar para Ubuntu 26; sem ação necessária por enquanto.
-
-### 4. Deploy na AWS (ainda não feito)
-Seguir `docs/deploy-aws.md` (VPC, SGs, RDS, S3 + CloudFront, IAM Role, 2 EC2s, ALB + WAF). Depois criar os secrets `EC2_SSH_KEY`, `EC2_USER`, `EC2_PUBLIC_HOST` e `EC2_PRIVATE_HOST`, a variable `DEPLOY_ENABLED=true` e o environment `production` com aprovação manual. A parte de AWS está documentada, mas **nunca foi testada**.
-
-### 5. Itens menores
-- Proteção da branch `main` no GitHub (exigir CI verde antes de merge): ainda não configurada.
-- ~~Tela de troca de senha~~ → **spec 006 implementada na branch `feat/006-troca-senha`** (ainda sem commit; falta rodar os testes do backend com Docker e abrir o PR).
-- O frontend não tem testes automatizados (a cobertura do SonarQube exclui `frontend/**`).
+- **Pipeline no formato do diagrama:** Docker Hub + deploy via SSM/OIDC (em andamento). Depende de o usuário criar `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` e do colega entregar a role OIDC e o instance-id do master.
+- **AWS (colega):** Terraform em `infra/terraform/` seguindo `infra/README.md`; ao receber os outputs, preencher os `TROQUE` de `k8s/overlays/aws` e fazer o primeiro deploy (`docs/deploy-aws.md`).
+- **SonarQube:** achado "Use VARCHAR2 instead of CHAR" em `001_init.sql` é falso positivo (regra Oracle) — marcar como *False Positive* no SonarCloud. Achados do `ci.yml` (senha do Postgres de teste, `--ignore-scripts`, actions sem SHA fixo) ficam com a mudança da pipeline.
+- **Dependabot:** PRs majors abertas; avaliar em grupos (Actions → Docker → backend → frontend), uma por vez, com lint/testes/build/audit. Node 26 já é LTS (out/2026) → padronizar Docker, CI e `engines`.
+- **Testes do frontend** (Vitest + Testing Library): ainda não existem; a cobertura do Sonar exclui `frontend/**`.
+- **Proteção da `main`:** exigir PR e checks verdes (sem exigir aprovação de outra pessoa).

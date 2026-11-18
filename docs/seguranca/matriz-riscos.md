@@ -21,8 +21,8 @@
             Impacto →   1        2        3        4        5
 Prob. 5            |        |        |        |        |        |
       4            |        |        |  R07   |  R01   |        |
-      3            |        |  R09   |  R05   |  R03   |  R02   |
-      2            |        |        |  R08   |  R04   |  R06   |
+      3            |        |  R09   |  R05   |  R03   |R02 R11 |
+      2            |        |        |  R08   |R04 R12 |R06 R13 |
       1            |        |        |        |  R10   |        |
 ```
 
@@ -41,6 +41,8 @@ Prob. 5            |        |        |        |        |        |
 | R08 | Perda de dados (exclusão acidental, falha de disco) | 2 | 3 | Médio (6) | Mitigar | Backups automáticos do RDS (7 dias) + snapshot manual antes de deploy; versionamento S3 |
 | R09 | Pedido fantasma (cliente não retira — pagamento no local) | 3 | 2 | Médio (6) | Aceitar | Restaurante pode cancelar; risco de negócio, não técnico |
 | R10 | Comprometimento da conta GitHub / pipeline | 1 | 4 | Baixo (4) | Mitigar | MFA na conta, branch protection na `main`, `permissions` mínimas, environment com aprovação |
+| R12 | Vazamento do **state do Terraform** (contém endpoints e, às vezes, senhas) | 2 | 4 | Médio (8) | Mitigar | State remoto em bucket S3 **privado**, criptografado, versionado e com lock; `*.tfstate` bloqueado no `.gitignore`; senha do RDS gerenciada pelo Secrets Manager (`manage_master_user_password`) |
+| R13 | Credencial AWS da pipeline roubada (acesso à conta) | 2 | 5 | **Alto (10)** | Mitigar | **GitHub OIDC** → IAM Role com credencial temporária, sem access key guardada; trust policy restrita ao repositório; permissão só `ssm:SendCommand` na instância do master (ADR-15); environment `production` com aprovação |
 
 ## 5. Plano de ação por nível
 | Nível | Prazo | Resposta |
