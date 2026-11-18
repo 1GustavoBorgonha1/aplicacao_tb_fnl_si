@@ -46,7 +46,7 @@ Manifests em [k8s/](../../k8s/), contrato com a infraestrutura em [infra/README.
 |---|---|---|
 | Frontend | React 19 + Vite + React Router | SPA simples, build estático |
 | Servidor web | `nginxinc/nginx-unprivileged` | Roda sem root, proxy reverso, headers |
-| Backend | Node 22 + Express 5 | Pedido da disciplina, erros async nativos |
+| Backend | Node 26 LTS + Express 5 | Pedido da disciplina, erros async nativos |
 | Validação | zod | Schema único por rota |
 | Banco | PostgreSQL 16 (→ RDS) | Relacional, transações nos pedidos |
 | Senhas | bcryptjs (custo 12) | Hash lento e com salt, sem binário nativo |
