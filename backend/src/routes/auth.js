@@ -3,7 +3,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { query, withTransaction } from '../db/pool.js';
-import { conflict, forbidden, unauthorized } from '../errors.js';
+import { badRequest, conflict, forbidden, unauthorized } from '../errors.js';
 import { audit } from '../logger.js';
 import { DUMMY_HASH, hashPassword, verifyPassword } from '../services/password.js';
 import { signToken } from '../services/token.js';
@@ -35,6 +35,8 @@ const restauranteSchema = clienteSchema.extend({
   restaurante: restauranteDadosSchema.extend({ cnpj: soDigitos(14, 14) }),
 });
 const loginSchema = z.object({ email, senha: z.string().min(1).max(200) });
+// Spec 006 — a política vale só para a nova senha (CA-006-03); a atual segue o formato do login.
+const trocaSenhaSchema = z.object({ senha_atual: z.string().min(1).max(200), nova_senha: senha });
 
 const publicUser = (u) => ({ id: u.id, nome: u.nome, email: u.email, role: u.role });
 
@@ -59,6 +61,20 @@ export function authRouter({ loginLimit, loginWindowMin }) {
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: { erro: 'Muitos cadastros a partir deste IP. Tente mais tarde.' },
+  });
+  // RS-006-04 — Limite por usuário; só tentativas que falham contam (CA-006-07).
+  const senhaLimiter = rateLimit({
+    windowMs: loginWindowMin * 60_000,
+    limit: loginLimit,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    keyGenerator: (req) => `user:${req.user.id}`,
+    message: { erro: 'Muitas tentativas. Tente novamente mais tarde.' },
+    handler: (req, res, _next, options) => {
+      audit('password_change_rate_limited', { userId: req.user.id, ip: req.ip });
+      res.status(options.statusCode).json(options.message);
+    },
   });
 
   async function emailEmUso(db, e) {
@@ -134,6 +150,29 @@ export function authRouter({ loginLimit, loginWindowMin }) {
       body.restaurante = rows[0] ?? null;
     }
     res.json(body);
+  });
+
+  // Spec 006 — troca de senha (qualquer perfil autenticado).
+  router.patch('/senha', requireAuth, senhaLimiter, async (req, res) => {
+    const data = parse(trocaSenhaSchema, req.body);
+    const { rows } = await query('SELECT senha_hash FROM users WHERE id = $1', [req.user.id]);
+
+    // RS-006-01 — exige a senha atual. 400 (não 401) para o front não tratar como sessão expirada.
+    if (!(await verifyPassword(data.senha_atual, rows[0].senha_hash))) {
+      audit('password_change_failed', { userId: req.user.id, ip: req.ip });
+      throw badRequest('Dados inválidos', { senha_atual: ['senha atual incorreta'] }); // CA-006-02
+    }
+    if (data.nova_senha === data.senha_atual) {
+      throw badRequest('Dados inválidos', { nova_senha: ['deve ser diferente da senha atual'] }); // CA-006-04
+    }
+
+    // RS-006-03 — incrementar a versão invalida todos os tokens anteriores (CA-006-05).
+    const updated = await query(
+      'UPDATE users SET senha_hash = $1, token_versao = token_versao + 1 WHERE id = $2 RETURNING *',
+      [await hashPassword(data.nova_senha), req.user.id],
+    );
+    audit('password_changed', { userId: req.user.id, ip: req.ip });
+    res.json({ token: signToken(updated.rows[0]) });
   });
 
   return router;

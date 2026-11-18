@@ -1,9 +1,11 @@
 // RS-001-02 — JWT assinado (HS256) com expiração curta.
+// RS-006-03 — claim "tv" (versão do token) permite invalidar sessões na troca de senha.
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 
 export function signToken(user) {
-  return jwt.sign({ sub: String(user.id), role: user.role }, config.JWT_SECRET, {
+  const claims = { sub: String(user.id), role: user.role, tv: user.token_versao ?? 0 };
+  return jwt.sign(claims, config.JWT_SECRET, {
     algorithm: 'HS256',
     expiresIn: config.JWT_EXPIRES_IN,
     issuer: 'marmifit',

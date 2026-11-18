@@ -10,6 +10,8 @@ export const logger = pino({
       'req.headers.cookie',
       '*.senha',
       '*.senha_hash',
+      '*.senha_atual',
+      '*.nova_senha',
       '*.token',
       'senha',
       'token',
