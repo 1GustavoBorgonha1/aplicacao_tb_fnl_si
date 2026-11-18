@@ -97,9 +97,12 @@ Quer testar também no **Kubernetes** (como na AWS)? Veja [k8s/README.md](k8s/RE
 
 ### Testes
 ```bash
-# Testes de integração (API + Postgres descartável) — 59 testes, ~90% de cobertura
+# Backend — testes de integração (API + Postgres descartável)
 docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from tests
 docker compose -f docker-compose.test.yml down -v
+
+# Frontend — testes de componentes (Vitest + Testing Library); precisa de Node 26
+cd frontend && npm ci && npm test            # npm run test:coverage gera frontend/coverage/lcov.info
 ```
 Cada teste cita o critério de aceite da spec que ele comprova (ex.: `CA-004-01 total é calculado no servidor`).
 

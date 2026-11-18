@@ -12,4 +12,17 @@ export default defineConfig({
     },
   },
   build: { sourcemap: false }, // não publica o código-fonte original
+  // ADR-16 — testes de componentes (Vitest + Testing Library em jsdom).
+  test: {
+    environment: 'jsdom',
+    include: ['tests/**/*.test.{js,jsx}'],
+    setupFiles: ['./tests/setup.js'],
+    restoreMocks: true,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      include: ['src/**'],
+      exclude: ['src/main.jsx'],
+    },
+  },
 });
