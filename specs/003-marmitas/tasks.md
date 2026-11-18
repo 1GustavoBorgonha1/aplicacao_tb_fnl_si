@@ -9,3 +9,4 @@
 - [x] T05 — Catálogo público com filtro por categoria
 - [x] T06 — Testes CA-003-01 a CA-003-08
 - [x] T07 — Telas Catálogo (cliente) e Minhas Marmitas (restaurante)
+- [x] T08 — Máscara de moeda no preço (UX-003-01): `components/MoneyInput.jsx` + `centavosDeTexto()` em `format.js`

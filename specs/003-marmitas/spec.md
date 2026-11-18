@@ -21,6 +21,9 @@ Cada restaurante cadastra suas marmitas com foto e informação nutricional — 
 - **CA-003-07** — Remover marmita que já está em pedidos preserva o histórico (o item do pedido guarda nome e preço).
 - **CA-003-08** — Preço deve ser > 0 e ≤ R$ 1.000,00.
 
+### Requisitos de interface (UX — sem efeito na validação do servidor)
+- **UX-003-01** — O campo de preço usa máscara de moeda "caixa registradora": o restaurante digita só números e a vírgula anda da direita para a esquerda (digitar `2`, `5`, `9`, `0` mostra `R$ 25,90`); apagar remove o último dígito; colar texto aproveita só os dígitos; não passa de R$ 1.000,00. O valor enviado é sempre `preco_centavos` inteiro — o CA-003-08 continua sendo garantido pelo backend.
+
 ## 4. Requisitos de segurança
 - **RS-003-01** — Upload em memória com limite de tamanho (DoS por arquivo grande).
 - **RS-003-02** — Verificação de assinatura binária, não do `Content-Type` do cliente (upload de `.php`/script disfarçado).

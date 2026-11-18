@@ -25,7 +25,7 @@ storage.url(key) -> string            // local: "/uploads/<key>" · s3: "${S3_PU
 
 ## Arquivos
 - `backend/src/routes/meals.js`, `backend/src/middlewares/upload.js`, `backend/src/storage/*`, `backend/tests/meals.test.js`
-- Frontend: `pages/cliente/Catalogo.jsx`, `pages/restaurante/MinhasMarmitas.jsx`
+- Frontend: `pages/cliente/Catalogo.jsx`, `pages/restaurante/MinhasMarmitas.jsx`, `components/MoneyInput.jsx` (máscara de moeda, UX-003-01; o estado do formulário guarda centavos inteiros)
 
 ## Dependências novas
 `multer` (upload), `@aws-sdk/client-s3` (driver S3).
