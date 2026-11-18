@@ -9,7 +9,7 @@ COPY . .
 RUN npm run build
 
 # nginx-unprivileged: roda como uid 101 e escuta na porta 8080 (sem privilégio de root).
-FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.31-alpine AS runtime
 USER root
 RUN apk upgrade --no-cache && rm /etc/nginx/conf.d/default.conf
 # Arquivos da imagem ficam com dono root (somente leitura para o uid 101 do Nginx):
