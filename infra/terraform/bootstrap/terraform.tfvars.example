@@ -1,0 +1,5 @@
+aws_region = "us-east-2"
+aws_profile = "Nome_do_perfil"
+project_name = "marmifit"
+# Opcional: nome globalmente unico, ou deixe o Terraform gerar.
+# state_bucket_name = "nome-globalmente-unico"

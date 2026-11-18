@@ -1,0 +1,6 @@
+bucket = "SUBSTITUA-pelo-bucket-criado-no-bootstrap"
+key = "marmifit/terraform.tfstate"
+region = "us-east-2"
+profile = "Nome_do_perfil"
+encrypt = true
+use_lockfile = true
