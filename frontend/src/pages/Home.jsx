@@ -8,6 +8,13 @@ export default function Home() {
 
   return (
     <section className="hero">
+      <img
+        src="/marmifit-arte.webp"
+        alt="Marmitas fitness da MarmiFit: frango com batata-doce, salmão com aspargos, arroz integral com lentilha e carne com legumes"
+        className="hero-arte"
+        width="360"
+        height="360"
+      />
       <h1>Comida saudável, sem precisar cozinhar.</h1>
       <p className="lead">
         Escolha um restaurante parceiro, monte seu pedido de marmitas fitness e retire no horário que

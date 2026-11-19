@@ -28,7 +28,7 @@ export default function Layout() {
       <header className="topbar">
         <div className="container topbar-inner">
           <Link to="/" className="brand">
-            <img src="/favicon.svg" alt="" width="28" height="28" /> MarmiFit
+            <img src="/logo-marmifit.webp" alt="MarmiFit" className="brand-logo" width="151" height="38" />
           </Link>
           <nav className="nav">
             {user ? (
