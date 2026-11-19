@@ -40,6 +40,7 @@ describe('Páginas públicas', () => {
     renderComRotas(<Home />);
     expect(screen.getByRole('link', { name: /Sou cliente/ })).toHaveAttribute('href', '/cadastro/cliente');
     expect(screen.getByRole('link', { name: /Sou empresa/ })).toHaveAttribute('href', '/cadastro/empresa');
+    expect(screen.getByRole('img', { name: /Marmitas fitness da MarmiFit/ })).toHaveAttribute('src', '/marmifit-arte.webp');
   });
 
   it('Home redireciona quem já está logado para a própria área', async () => {
@@ -80,6 +81,7 @@ describe('Layout', () => {
     mockFetch({ 'GET /auth/me': me('restaurante', { restaurante: { id: 3, nome: 'Fit', status: 'aprovado' } }) });
     renderComRotas(<Layout />, { rota: '/', caminho: '/' });
     expect(await screen.findByRole('link', { name: 'Marmitas' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'MarmiFit' })).toHaveAttribute('src', '/logo-marmifit.webp');
     expect(screen.getByRole('link', { name: 'Minha empresa' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Painel' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Sair' }));
