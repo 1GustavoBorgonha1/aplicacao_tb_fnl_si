@@ -1,0 +1,94 @@
+#!/bin/bash
+set -Eeuo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+STAGE=cloud-init
+trap 'printf "Falha no deploy: etapa=%s linha=%s\n" "$STAGE" "$LINENO" >&2' ERR
+export AWS_DEFAULT_REGION='${region}'
+if ! cloud-init status --wait; then
+  echo 'A inicializacao da EC2 falhou. Consulte cloud-init-output.log pelo SSM.' >&2
+  cloud-init status --long || true
+  exit 1
+fi
+STAGE=dependencias
+for binary in aws jq psql k3s; do
+  command -v "$binary" >/dev/null || { echo "Dependencia ausente: $binary" >&2; exit 1; }
+done
+STAGE=workers
+READY=false
+for attempt in $(seq 1 90); do
+  COUNT=$(k3s kubectl get nodes -l workload=application -o json 2>/dev/null | jq '[.items[] | select(any(.status.conditions[]; .type == "Ready" and .status == "True"))] | length') || COUNT=0
+  if [ "$COUNT" -ge 3 ]; then READY=true; break; fi
+  sleep 10
+done
+[ "$READY" = true ] || { echo 'Os tres workers nao ficaram prontos'; exit 1; }
+WORKDIR=$(mktemp -d)
+trap 'rm -rf "$WORKDIR"; unset PGPASSWORD DB_PASSWORD DB_PASSWORD_URI DATABASE_URL JWT_SECRET ADMIN_PASSWORD ADMIN_EMAIL' EXIT
+chmod 700 "$WORKDIR"
+STAGE=conexao-postgresql
+DB_PASSWORD=$(aws ssm get-parameter --name '${password_parameter}' --with-decryption --query Parameter.Value --output text)
+export PGPASSWORD="$DB_PASSWORD"
+export PGHOST='${db_host}' PGPORT=5432 PGDATABASE='${db_name}' PGUSER='${db_user}'
+export PGSSLMODE=require PGCONNECT_TIMEOUT=10 PGCLIENTENCODING=UTF8
+DB_READY=false
+for attempt in $(seq 1 60); do
+  if psql -X --no-password --set=ON_ERROR_STOP=1 --command='SELECT 1' >/dev/null 2>&1; then DB_READY=true; break; fi
+  sleep 10
+done
+[ "$DB_READY" = true ] || { echo 'PostgreSQL indisponivel'; exit 1; }
+%{ if schema_uri != "" ~}
+STAGE=schema
+psql -X --no-password --set=ON_ERROR_STOP=1 <<'SQL'
+CREATE TABLE IF NOT EXISTS public._terraform_bootstrap (
+  id SMALLINT PRIMARY KEY,
+  completed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+SQL
+DONE=$(psql -X --no-password --set=ON_ERROR_STOP=1 --tuples-only --no-align --command='SELECT COUNT(*) FROM public._terraform_bootstrap WHERE id=1')
+if [ "$DONE" = "0" ]; then
+  aws s3 cp '${schema_uri}' "$WORKDIR/schema.sql" --only-show-errors
+  # O schema fornecido ja controla sua transacao com BEGIN/COMMIT.
+  # ON_ERROR_STOP evita continuar e marcar sucesso depois de um erro SQL.
+  psql -X --no-password --set=ON_ERROR_STOP=1 --file="$WORKDIR/schema.sql"
+  psql -X --no-password --set=ON_ERROR_STOP=1 --command='INSERT INTO public._terraform_bootstrap (id) VALUES (1)'
+  echo 'Schema inicial importado.'
+else
+  echo 'Schema inicial ja importado; nenhuma alteracao SQL executada.'
+fi
+%{ endif ~}
+STAGE=segredos
+# Montar o Secret somente na instancia; nenhum segredo entra no documento SSM.
+JWT_SECRET=$(aws ssm get-parameter --name '${jwt_parameter}' --with-decryption --query Parameter.Value --output text)
+ADMIN_PASSWORD=$(aws ssm get-parameter --name '${admin_password_parameter}' --with-decryption --query Parameter.Value --output text)
+ADMIN_EMAIL=$(printf '%s' '${admin_email_b64}' | base64 -d)
+DB_USER_URI=$(jq -rn --arg value '${db_user}' '$value|@uri')
+DB_PASSWORD_URI=$(jq -rn --arg value "$DB_PASSWORD" '$value|@uri')
+DATABASE_URL=$(printf 'postgresql://%s:%s@%s:5432/%s' "$DB_USER_URI" "$DB_PASSWORD_URI" '${db_host}' '${db_name}')
+jq -n --arg url "$DATABASE_URL" --arg jwt "$JWT_SECRET" --arg email "$ADMIN_EMAIL" --arg password "$ADMIN_PASSWORD" \
+  '{apiVersion:"v1",kind:"Secret",metadata:{name:"backend-secret",namespace:"${namespace}"},type:"Opaque",data:({DATABASE_URL:$url,JWT_SECRET:$jwt,ADMIN_EMAIL:$email,ADMIN_PASSWORD:$password}|with_entries(.value |= @base64))}' >"$WORKDIR/secret.json"
+chmod 600 "$WORKDIR/secret.json"
+unset PGPASSWORD DB_PASSWORD DB_PASSWORD_URI DATABASE_URL JWT_SECRET ADMIN_PASSWORD ADMIN_EMAIL
+# Criar namespace antes do Secret; aplicar labels de Pod Security nos manifests.
+STAGE=recursos-kubernetes
+k3s kubectl create namespace '${namespace}' --dry-run=client -o yaml | k3s kubectl apply -f -
+k3s kubectl apply --server-side --field-manager=terraform-bootstrap -f "$WORKDIR/secret.json"
+# Migracao da implementacao generica antiga: liberar NodePort 30080, se existir.
+k3s kubectl delete service app -n '${namespace}' --ignore-not-found
+printf '%s' '${platform_b64}' | base64 -d | k3s kubectl apply -f -
+printf '%s' '${backend_b64}' | base64 -d >"$WORKDIR/backend.json"
+printf '%s' '${frontend_b64}' | base64 -d >"$WORKDIR/frontend.json"
+# Primeiro start com uma replica evita corrida ao criar o admin inicial.
+STAGE=rollout-backend
+if ! k3s kubectl get deployment backend -n '${namespace}' >/dev/null 2>&1; then
+  jq '.spec.replicas=1' "$WORKDIR/backend.json" >"$WORKDIR/backend-first.json"
+  k3s kubectl apply -f "$WORKDIR/backend-first.json"
+  k3s kubectl rollout status deployment/backend -n '${namespace}' --timeout=600s
+fi
+k3s kubectl apply -f "$WORKDIR/backend.json"
+k3s kubectl rollout status deployment/backend -n '${namespace}' --timeout=600s
+STAGE=rollout-frontend
+k3s kubectl apply -f "$WORKDIR/frontend.json"
+k3s kubectl rollout status deployment/frontend -n '${namespace}' --timeout=600s
+# Remover somente os objetos obsoletos da implementacao generica anterior.
+k3s kubectl delete deployment app -n '${namespace}' --ignore-not-found
+k3s kubectl delete secret app-config -n '${namespace}' --ignore-not-found
+k3s kubectl get pods -n '${namespace}' -o wide

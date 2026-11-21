@@ -1,0 +1,26 @@
+aws_region = "us-east-2"
+aws_profile = "projeto-aula"
+project_name = "marmifit"
+state_bucket_name = "SUBSTITUA-pelo-bucket-ja-criado-no-bootstrap"
+
+backend_image = "gustavoborgonha/marmifit-backend:10a771b00532caff63ee1d94218bafaea9636f3b"
+frontend_image = "gustavoborgonha/marmifit-frontend:10a771b00532caff63ee1d94218bafaea9636f3b"
+backend_replicas = 2
+frontend_replicas = 2
+admin_email = "admin@marmifit.local"
+# Apenas configuracoes nao sensiveis. Senhas e JWT sao gerados pelo Terraform.
+backend_environment = { LOG_LEVEL = "info" }
+
+db_engine_version = "16"
+db_schema_file = "schema.sql"
+db_name = "marmifit"
+db_username = "appadmin"
+db_instance_class = "db.t3.micro"
+db_allocated_storage = 20
+db_backup_retention_days = 1
+db_final_snapshot = false
+master_instance_type = "t3.small"
+worker_instance_type = "t3.small"
+k3s_version = "v1.34.1+k3s1"
+vpc_cidr = "10.20.0.0/16"
+images_force_destroy = false
