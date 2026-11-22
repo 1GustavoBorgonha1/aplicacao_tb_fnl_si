@@ -8,7 +8,6 @@ k8s/
   components/postgres Postgres no cluster (só ambientes locais; na AWS é o RDS)
   overlays/local/     Kubernetes do Docker Desktop: Postgres no cluster + uploads em volume
   overlays/k3d/       Simulação da AWS num K3s de verdade: 1 master + 3 workers, s3mock no papel do S3
-  overlays/aws/       K3s na AWS: RDS PostgreSQL + S3, imagens do Docker Hub
 ```
 
 | Objeto | Tipo | Porta | Observação |
@@ -91,7 +90,7 @@ kubectl delete -k k8s/overlays/local
 Obs.: o Docker Desktop não aplica NetworkPolicy (o CNI dele não suporta); elas são aplicadas no **K3s**.
 
 ## AWS (K3s)
-Passo a passo no topo de [overlays/aws/kustomization.yaml](overlays/aws/kustomization.yaml): preencher os valores `TROQUE` com as saídas do Terraform, criar o `backend-secret` com `kubectl create secret` e `kubectl apply -k k8s/overlays/aws`.
+Na AWS, os manifests oficiais ficam no Terraform (`infra/terraform/manifests/`): o `terraform apply` gera o ConfigMap e o Secret a partir dos outputs e aplica tudo no master via SSM (passo a passo em [infra/terraform/README.md](../infra/terraform/README.md)). Os manifests desta pasta (`base`, `local`, `k3d`) servem para os testes locais; mudanças de segurança devem ser feitas nos dois lugares.
 Depois disso a pipeline só troca a imagem (`kubectl set image` + `kubectl rollout status`).
 
 Comandos úteis:

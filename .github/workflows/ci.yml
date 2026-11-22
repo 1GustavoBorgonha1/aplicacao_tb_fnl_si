@@ -133,7 +133,7 @@ jobs:
       - name: Kubernetes — renderizar os overlays
         run: |
           for o in local k3d; do for f in backend db; do cp "k8s/overlays/$o/$f.local.env.example" "k8s/overlays/$o/$f.local.env"; done; done
-          for o in aws local k3d; do kubectl kustomize "k8s/overlays/$o" > /dev/null; done
+          for o in local k3d; do kubectl kustomize "k8s/overlays/$o" > /dev/null; done
           echo "Manifests válidos"
 
       - name: Terraform existe?

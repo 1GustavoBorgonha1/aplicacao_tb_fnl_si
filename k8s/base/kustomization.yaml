@@ -1,6 +1,7 @@
 # Base comum dos manifests da MarmiFit (ADR-13). Use sempre um overlay:
 #   kubectl apply -k k8s/overlays/local   # Kubernetes do Docker Desktop
-#   kubectl apply -k k8s/overlays/aws     # cluster K3s na AWS
+#   kubectl apply -k k8s/overlays/k3d     # simulação local da AWS
+# Na AWS os manifests oficiais são os do Terraform (infra/terraform/manifests).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: marmifit

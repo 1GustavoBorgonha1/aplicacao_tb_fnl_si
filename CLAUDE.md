@@ -73,7 +73,7 @@ O `.env` fica na raiz, é lido pelo `docker-compose.yml` e **nunca é commitado*
 
 Variáveis que existem só no backend e já têm default (não precisam ir no `.env` local): `JWT_EXPIRES_IN=2h`, `BCRYPT_COST=12`, `LOGIN_RATE_LIMIT=10` (só falhas contam), `LOGIN_RATE_WINDOW_MIN=15`, `TRUST_PROXY=1`, `LOG_LEVEL=info`, `STORAGE_DRIVER=local`. Lista completa e validação em `backend/src/config.js`.
 
-**Na AWS** não há `.env`: a configuração vem do ConfigMap gerado em `k8s/overlays/aws/kustomization.yaml` (bucket, região, `DATABASE_SSL=true`, `TRUST_PROXY=2`) e do Secret `backend-secret`, criado no master com `kubectl create secret` (nunca em arquivo versionado). Veja `docs/deploy-aws.md`.
+**Na AWS** não há `.env`: o Terraform (`infra/terraform/`) gera o ConfigMap (bucket, região, `DATABASE_SSL=true`, `TRUST_PROXY=2`) e o Secret `backend-secret` (senhas no SSM Parameter Store) e aplica os manifests de `infra/terraform/manifests/` via SSM. Veja `infra/terraform/README.md` e `docs/deploy-aws.md`.
 
 ## Comandos
 
@@ -221,7 +221,7 @@ O Quality Gate do SonarCloud avalia o **código novo** (cobertura ≥ 80%, sem b
 ## Pendências (estado em 2026-11-18)
 
 - **Pipeline no formato do diagrama:** Docker Hub + deploy via SSM/OIDC (em andamento). Depende de o usuário criar `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` e do colega entregar a role OIDC e o instance-id do master.
-- **AWS (colega):** Terraform em `infra/terraform/` seguindo `infra/README.md`; ao receber os outputs, preencher os `TROQUE` de `k8s/overlays/aws` e fazer o primeiro deploy (`docs/deploy-aws.md`).
+- **AWS (João):** Terraform mergeado (PR #32, autor jaohoeppers, copiado do fork #30). Fonte única para a AWS: `infra/terraform/` (manifests e schema próprios; `k8s/overlays/aws` e `infra/database` foram removidos). Pendências do João: ASG, WAF com SQLi/KnownBadInputs, role OIDC, DR do RDS, tag das imagens.
 - **SonarQube:** achado "Use VARCHAR2 instead of CHAR" em `001_init.sql` é falso positivo (regra Oracle) — marcar como *False Positive* no SonarCloud. Achados do `ci.yml` (senha do Postgres de teste, `--ignore-scripts`, actions sem SHA fixo) ficam com a mudança da pipeline.
 - **Dependabot:** PRs majors abertas; avaliar em grupos (Actions → Docker → backend → frontend), uma por vez, com lint/testes/build/audit. Node 26 já é LTS (out/2026) → padronizar Docker, CI e `engines`.
 - **Testes do frontend**: 54 testes (ADR-16, `frontend/tests/`), cobertura ~92% — todas as telas têm teste. Tela nova ou alterada precisa de teste: o Quality Gate exige 80% no código novo também no frontend.

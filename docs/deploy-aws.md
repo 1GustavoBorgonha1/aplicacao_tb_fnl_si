@@ -1,8 +1,8 @@
 # Deploy na AWS — runbook (Terraform + K3s)
 
-Arquitetura: [arquitetura-aws.png](arquitetura-aws.png) · Contrato com a infraestrutura: [infra/README.md](../infra/README.md) · Manifests: [k8s/README.md](../k8s/README.md) · Banco: [infra/database/README.md](../infra/database/README.md).
+Arquitetura: [arquitetura-aws.png](arquitetura-aws.png) · Contrato com a infraestrutura: [infra/README.md](../infra/README.md) · Terraform, manifests e schema: [infra/terraform/README.md](../infra/terraform/README.md).
 
-Resumo: o **Terraform** cria a rede, o ALB + WAF, o cluster **K3s** (1 master + 3 workers), o **RDS PostgreSQL** e os buckets S3. A aplicação é instalada no cluster com `kubectl apply -k`. Depois disso, cada push na `main` que passa no Quality Gate atualiza as imagens no cluster pela pipeline.
+Resumo: o **Terraform** cria a rede, o ALB + WAF, o cluster **K3s** (1 master + 3 workers), o **RDS PostgreSQL** e os buckets S3. O mesmo `terraform apply` instala a aplicação no cluster via SSM (manifests em `infra/terraform/manifests/`). Depois disso, cada push na `main` que passa no Quality Gate atualiza as imagens no cluster pela pipeline.
 
 ## 1. Provisionar a infraestrutura
 ```bash
@@ -22,23 +22,10 @@ kubectl get nodes          # master + 3 workers "Ready"
 O `kubectl` do K3s já vem configurado no master (`/etc/rancher/k3s/k3s.yaml`, só root).
 
 ## 3. Instalar a aplicação
-1. Copie a pasta `k8s/` do repositório para o master e preencha os valores `TROQUE` em `k8s/overlays/aws/kustomization.yaml` (usuário do Docker Hub, bucket, região) com os outputs do Terraform.
-2. Crie o Secret, sem gravar senha em arquivo:
-   ```bash
-   kubectl create namespace marmifit
-   kubectl -n marmifit create secret generic backend-secret \
-     --from-literal=DATABASE_URL='postgres://<usuario>:<senha>@<endpoint-rds>:5432/marmifit' \
-     --from-literal=JWT_SECRET="$(openssl rand -base64 48)" \
-     --from-literal=ADMIN_EMAIL='<email-do-admin>' \
-     --from-literal=ADMIN_PASSWORD='<senha-forte-temporaria>'
-   ```
-3. Aplique e acompanhe:
-   ```bash
-   kubectl apply -k k8s/overlays/aws
-   kubectl -n marmifit rollout status deployment/backend
-   kubectl -n marmifit get pods -o wide      # réplicas espalhadas pelos workers
-   ```
-   No primeiro start o backend cria as tabelas (migrations) e o admin.
+Não há passo manual: o `terraform apply` importa o schema do banco (`infra/terraform/schema.sql`), cria o Secret `backend-secret` com as senhas geradas (guardadas no SSM Parameter Store, nunca em arquivo) e aplica os manifests de `infra/terraform/manifests/` no master via SSM, aguardando o rollout. Detalhes e acompanhamento em [infra/terraform/README.md](../infra/terraform/README.md).
+```bash
+kubectl -n marmifit get pods -o wide      # no master: réplicas espalhadas pelos workers
+```
 
 ## 4. Abrir a aplicação
 - Endereço: `http://<DNS-do-ALB>` (output do Terraform). O Target Group deve mostrar os 3 workers *healthy* na porta 30080.
