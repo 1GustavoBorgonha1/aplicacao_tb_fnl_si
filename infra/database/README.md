@@ -3,7 +3,7 @@
 Arquivo do schema: [schema.sql](schema.sql) (PostgreSQL 16).
 
 ## Resumo
-- **Motor:** Amazon RDS for **PostgreSQL 16**, porta **5432**. (No diagrama, trocar "RDS MySQL / 3306" por "RDS PostgreSQL / 5432".)
+- **Motor:** Amazon RDS for **PostgreSQL 16**, porta **5432**.
 - **As tabelas são criadas pela própria aplicação** no startup (migrations versionadas em `backend/migrations/`). O Terraform só precisa criar a instância, o banco e o usuário. Rodar o `schema.sql` à mão é opcional; se rodar, a aplicação reconhece e não recria nada.
 - O admin inicial também é criado pela aplicação (variáveis `ADMIN_EMAIL` / `ADMIN_PASSWORD` no Secret do Kubernetes).
 
