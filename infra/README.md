@@ -3,7 +3,7 @@
 Este documento diz **o que a aplicação MarmiFit precisa da AWS** e **o que a infraestrutura precisa devolver** para a aplicação funcionar. Quem faz o Terraform/K3s usa isto como checklist.
 
 - Diagrama: [docs/arquitetura-aws.png](../docs/arquitetura-aws.png)
-- Banco: [infra/database/README.md](database/README.md) (schema e configuração do RDS)
+- Banco: schema em [infra/terraform/schema.sql](terraform/schema.sql), importado pelo Terraform no primeiro deploy
 - Manifests do Kubernetes: [k8s/README.md](../k8s/README.md)
 
 > O banco é **Amazon RDS PostgreSQL 16, porta 5432**, como no diagrama. A aplicação foi escrita e testada em PostgreSQL.
@@ -95,18 +95,15 @@ Sem chave SSH, sem access key no GitHub, sem porta aberta.
 ## 9. O que a infra precisa devolver (outputs do Terraform)
 | Output | Usado em |
 |---|---|
-| Nome e região do **bucket de imagens** | `k8s/overlays/aws` (`S3_BUCKET`, `S3_PUBLIC_URL`, `AWS_REGION`) |
+| Nome e região do **bucket de imagens** | ConfigMap gerado pelo Terraform (`S3_BUCKET`, `S3_PUBLIC_URL`, `AWS_REGION`) |
 | **Endpoint do RDS** + usuário/senha da aplicação (senha por mensagem privada ou Secrets Manager) | Secret `backend-secret` (`DATABASE_URL`) |
 | **Instance ID do master** | Secret/variable da pipeline para o SSM |
 | **ARN da role OIDC** | Pipeline (assume a role) |
 | **DNS do ALB** | Acessar a aplicação / apresentação |
 
 ## 10. Primeiro deploy da aplicação
-No master (via SSM Session Manager):
-1. Copiar a pasta `k8s/` do repositório e preencher os valores `TROQUE` em `k8s/overlays/aws/kustomization.yaml` com os outputs acima.
-2. Criar o Secret (comando completo no topo do `kustomization.yaml`): `kubectl -n marmifit create secret generic backend-secret --from-literal=DATABASE_URL=... --from-literal=JWT_SECRET=... --from-literal=ADMIN_EMAIL=... --from-literal=ADMIN_PASSWORD=...`
-3. `kubectl apply -k k8s/overlays/aws` e `kubectl -n marmifit get pods -o wide` (pods espalhados pelos workers).
-4. Abrir o DNS do ALB → `/api/health` deve responder `{"status":"ok"}`. Trocar a senha do admin em **Minha conta**.
+Feito pelo próprio Terraform: o `terraform apply` importa o `schema.sql`, cria o Secret `backend-secret` (senhas geradas e guardadas no SSM Parameter Store) e aplica os manifests de `infra/terraform/manifests/` no master via SSM, aguardando o rollout. Passo a passo em [infra/terraform/README.md](terraform/README.md).
+Depois: abrir o DNS do ALB → `/api/health` deve responder `{"status":"ok"}` e trocar a senha do admin em **Minha conta**.
 
 ## 11. Custo (crédito de US$ 200)
 - Os itens que mais pesam são os cobrados **por hora mesmo sem uso**: **NAT Gateway** e **ALB** (mais as EC2 e o RDS ligados).

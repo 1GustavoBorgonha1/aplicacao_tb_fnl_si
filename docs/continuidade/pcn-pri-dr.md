@@ -65,7 +65,7 @@ A infraestrutura inteira está descrita em código (`infra/terraform/`), as imag
 
 1. **Infraestrutura:** `terraform apply` (na mesma região ou em outra, trocando a variável de região). Recria VPC, subnets, NAT, SGs, ALB + WAF, master e workers do K3s, buckets e RDS.
 2. **Banco:** restaurar o RDS a partir do **snapshot mais recente** ou por *point-in-time* (backup diário, retenção de 7 dias; snapshot manual antes de cada deploy). Para outra região, copiar antes o snapshot para ela.
-3. **Aplicação:** no master, criar o `backend-secret` com o endpoint do RDS restaurado e rodar `kubectl apply -k k8s/overlays/aws` com a última tag estável. Os workers puxam as imagens do Docker Hub.
+3. **Aplicação:** o próprio `terraform apply` recria o `backend-secret` (apontando para o RDS restaurado) e reaplica os manifests de `infra/terraform/manifests/` com a última tag estável. Os workers puxam as imagens do Docker Hub.
 4. **Imagens das marmitas:** bucket S3 com versionamento; em DR regional, replicação ou cópia (`aws s3 sync`) para o bucket da nova região.
 5. **Validar:** Target Group com os 3 workers *healthy*, `GET /api/health` = `{"status":"ok"}`, login e um pedido de teste.
 

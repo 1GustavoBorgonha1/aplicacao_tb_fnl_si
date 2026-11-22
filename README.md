@@ -158,7 +158,7 @@ specs/
 | Container `db` (Postgres 16) | **RDS PostgreSQL** (subnet privada, criptografado) |
 | Volume `uploads` (`STORAGE_DRIVER=local`) | **S3** (`STORAGE_DRIVER=s3`; leitura pública só em `meals/*`) |
 | Rede `back-net` (internal) | Subnet privada + Security Groups + NetworkPolicy |
-| `docker compose up` | **Terraform** (infraestrutura) + `kubectl apply -k k8s/overlays/aws` |
+| `docker compose up` | **Terraform** (`infra/terraform/`): infraestrutura + deploy da aplicação via SSM |
 
 A troca é **só por configuração** (variáveis de ambiente / ConfigMap e Secret) — o código e as imagens são os mesmos. Contrato com a infraestrutura em [infra/README.md](infra/README.md); manifests em [k8s/](k8s/). Detalhes e decisões (ADRs) em [specs/000-arquitetura/plan.md](specs/000-arquitetura/plan.md).
 
