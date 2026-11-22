@@ -1,0 +1,39 @@
+# Segmentação de rede dentro do cluster (o K3s aplica NetworkPolicy nativamente).
+# 1) Nega toda entrada por padrão no namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# 2) Frontend aceita tráfego na 8080 (vem do ALB via NodePort; o SG dos workers
+#    só libera a 30080 para o SG do ALB — a restrição de origem fica na AWS).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-ingress
+spec:
+  podSelector:
+    matchLabels: { app: frontend }
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { port: 8080, protocol: TCP }
+---
+# 3) Backend só aceita conexões vindas dos pods do frontend.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-from-frontend
+spec:
+  podSelector:
+    matchLabels: { app: backend }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: frontend }
+      ports:
+        - { port: 3000, protocol: TCP }
