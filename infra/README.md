@@ -6,7 +6,7 @@ Este documento diz **o que a aplicação MarmiFit precisa da AWS** e **o que a i
 - Banco: [infra/database/README.md](database/README.md) (schema e configuração do RDS)
 - Manifests do Kubernetes: [k8s/README.md](../k8s/README.md)
 
-> ⚠️ **Correção do diagrama:** o banco é **Amazon RDS PostgreSQL 16, porta 5432** (não MySQL/3306). A aplicação foi escrita e testada em PostgreSQL.
+> O banco é **Amazon RDS PostgreSQL 16, porta 5432**, como no diagrama. A aplicação foi escrita e testada em PostgreSQL.
 
 ## 1. Visão geral
 

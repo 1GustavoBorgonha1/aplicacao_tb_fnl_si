@@ -24,7 +24,7 @@ Pedido: `recebido → em_preparo → pronto_retirada → retirado`, ou `cancelad
 - **SonarQube** é o scanner de segurança. **Não usar Trivy.**
 - **Infraestrutura AWS via Terraform** em `infra/terraform/` (feito pelo colega, por PR). Contrato app ↔ infra em `infra/README.md` (ADR-12).
 - **Orquestração: K3s** com manifests Kustomize em `k8s/` (ADR-13). **Registro: Docker Hub** (ADR-14). **Deploy: SSM Run Command + GitHub OIDC** (ADR-15) — sem SSH e sem access key.
-- **Banco é PostgreSQL** (RDS PostgreSQL 16, porta 5432). O diagrama original dizia MySQL; o usuário decidiu manter Postgres.
+- **Banco é PostgreSQL** (RDS PostgreSQL 16, porta 5432). O diagrama (`docs/arquitetura-aws.png`) já mostra RDS PostgreSQL / 5432.
 - Imagens em **pasta local** no dev (`STORAGE_DRIVER=local`) e **S3** na AWS; Postgres em container no dev e **RDS** na AWS. A troca é **só por variável de ambiente**, nunca por mudança de código.
 - Stack: Node 26 LTS + Express 5 (backend), React 19 + Vite + React Router 7 (frontend), Postgres 16, zod 4.
 - Documentação e textos da UI em **português**.
