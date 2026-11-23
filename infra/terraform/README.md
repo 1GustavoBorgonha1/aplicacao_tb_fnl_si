@@ -25,6 +25,7 @@ Internet → ALB HTTP/80 com WAF → workers:30080 → frontend Nginx:8080
 | Estado | Outro bucket S3, privado, versionado e criptografado, com lock nativo |
 | Administração | Systems Manager; sem SSH público ou IP público nas EC2 |
 | Segredos | Senha do banco, senha inicial do admin e JWT no Parameter Store |
+| Deploy GitHub | Provider IAM OIDC e role restrita ao repositório/environment, com envio de comando SSM somente ao master |
 
 Master, workers e RDS ficam na primeira zona. A segunda atende aos requisitos do ALB e do grupo de subnets do RDS. É um laboratório com master, NAT e banco únicos. O acesso é por HTTP no DNS do ALB; as imagens são lidas diretamente do S3 por HTTPS.
 
@@ -292,6 +293,60 @@ sudo tail -n 80 /var/log/cloud-init-output.log
 ```
 
 Os scripts informam a etapa em que falharam, sem imprimir segredos. Na AMI Amazon Linux 2023, a AWS CLI já está instalada; quando necessário, o nome correto do pacote é `awscli-2`. A subnet dos workers é definida no ASG; os security groups e a opção de IP público ficam na interface do launch template, evitando configurações de rede duplicadas.
+
+### Ativar o deploy da aplicação pelo GitHub Actions (OIDC)
+
+O workflow existente em `.github/workflows/ci.yml` já usa OIDC, environment `production` e SSM para trocar as imagens. O Terraform cria a confiança e a role; não configura variáveis nem permissões do repositório GitHub. Nenhuma access key é necessária no GitHub. O primeiro provisionamento/deploy continua pelo Terraform; depois a pipeline pode atualizar as imagens sem executar o script PowerShell local.
+
+**1. Conferir os novos parâmetros no `terraform.tfvars` final:**
+
+```hcl
+github_repository        = "1GustavoBorgonha1/aplicacao_tb_fnl_si"
+github_environment       = "production"
+github_oidc_provider_arn = null
+```
+
+Esses são os padrões, então podem ser omitidos se forem adequados ao ambiente. Não há alteração no `backend.hcl`.
+
+Com `github_oidc_provider_arn = null`, o Terraform cria o provider `https://token.actions.githubusercontent.com`, com audience `sts.amazonaws.com`. Existe somente um cadastro por URL em cada conta IAM. Antes de provisionar, confira em IAM → Identity providers se ele já existe. Nesse caso, informe seu ARN no parâmetro em vez de tentar criar outro:
+
+```hcl
+# Exemplo fictício: substitua o ID da conta pelo seu.
+github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+```
+
+O provider reutilizado é apenas consultado e deve pertencer à mesma conta, ter o emissor correto e aceitar `sts.amazonaws.com`. Ele não será removido pelo destroy deste projeto. Um provider criado pelo próprio Terraform pertence ao ciclo de vida desta infraestrutura.
+
+A confiança usa `StringEquals` para audience e subject exatos: `repo:1GustavoBorgonha1/aplicacao_tb_fnl_si:environment:production`. Forks e outros environments não são autorizados pelo padrão. Como o job usa um environment, o subject não contém a branch; a restrição à `main` precisa ser feita no GitHub. Ao alterar repositório/environment, mantenha os nomes coerentes com o workflow real. O workflow atual usa namespace `marmifit`; mantenha esse `project_name` ou peça ao responsável pelo workflow para ajustar o namespace.
+
+**2. Provisionar e concluir o primeiro deploy:** gere e revise um plano novo e execute o apply, conforme a seção de provisionamento. Depois consulte:
+
+```powershell
+terraform output -raw github_deploy_role_arn
+terraform output -raw master_instance_id
+```
+
+**3. Configurar o GitHub, com ajuda de um administrador do repositório:**
+
+- Em **Settings → Environments**, criar/conferir `production` e configurar **Deployment branches and tags** para permitir somente a branch `main`. Se forem exigidos reviewers, cada deploy aguardará essa aprovação.
+- Em **Settings → Secrets and variables → Actions → Variables** (ou nas variáveis do environment `production`), preencher:
+
+| Variável | Valor |
+|---|---|
+| `AWS_REGION` | `us-east-2` |
+| `AWS_DEPLOY_ROLE_ARN` | Output `github_deploy_role_arn` |
+| `K3S_MASTER_INSTANCE_ID` | Output `master_instance_id` |
+| `DEPLOY_ENABLED` | `true`, somente após a infraestrutura e o primeiro deploy estarem prontos |
+
+Não são secrets de credenciais: o login usa um token OIDC temporário. A pipeline ainda depende das configurações de build, publicação das imagens e verificações já existentes no repositório. Quem não tem permissão de escrita/administração precisa solicitar essa configuração ao responsável pelo projeto. Se o master for recriado, atualize `K3S_MASTER_INSTANCE_ID` com o novo output.
+
+**4. Validar a integração:** após um merge na `main` com os jobs anteriores aprovados, conferir no Actions o job Deploy e seu comando SSM. O job deve assumir a role, executar `kubectl set image` nos deployments backend/frontend e acompanhar os rollouts. Este teste precisa da infraestrutura provisionada; os testes locais simulados não comprovam autenticação real no GitHub/AWS.
+
+A role permite somente `ssm:SendCommand` para o ARN do master e para o documento AWS `AWS-RunShellScript`, além de `ssm:GetCommandInvocation` com `Resource = "*"`, exigido por essa ação sem suporte a ARN. Não concede administração de EC2, IAM, RDS, S3 ou acesso direto aos parâmetros. O documento permite executar shell no master; por isso a confiança no repositório e a proteção do environment são parte da configuração do deploy.
+
+Uma execução posterior do deploy inicial pelo Terraform pode reaplicar as imagens declaradas no tfvars. Mantenha `backend_image` e `frontend_image` coerentes com a versão desejada antes de aplicar mudanças que reexecutem esse passo. A pipeline muda as imagens em execução, mas não edita seu tfvars local.
+
+Referências: [OIDC AWS no GitHub Actions](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws), [permissões SSM](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ssm.html).
 
 ## 8. Remover o laboratório
 

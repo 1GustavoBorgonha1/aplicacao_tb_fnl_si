@@ -11,3 +11,7 @@ output "deployment_document" { value = aws_ssm_document.deploy.name }
 output "admin_email" { value = var.admin_email }
 output "admin_password_parameter" { value = aws_ssm_parameter.admin_password.name }
 output "jwt_secret_parameter" { value = aws_ssm_parameter.jwt_secret.name }
+output "github_deploy_role_arn" {
+  description = "Configurar em AWS_DEPLOY_ROLE_ARN nas variaveis do GitHub Actions."
+  value       = aws_iam_role.github_deploy.arn
+}

@@ -26,3 +26,9 @@ worker_health_check_grace_period = 1800
 k3s_version = "v1.34.1+k3s1"
 vpc_cidr = "10.20.0.0/16"
 images_force_destroy = false
+
+# OIDC para o job de deploy existente, sem access keys no GitHub.
+github_repository = "1GustavoBorgonha1/aplicacao_tb_fnl_si"
+github_environment = "production"
+# Null cria o provider; se ja existir na conta, informe seu ARN aqui.
+github_oidc_provider_arn = null

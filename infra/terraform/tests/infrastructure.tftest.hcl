@@ -1,4 +1,10 @@
 mock_provider "aws" {
+  mock_data "aws_partition" {
+    defaults = { partition = "aws" }
+  }
+  mock_data "aws_caller_identity" {
+    defaults = { account_id = "123456789012" }
+  }
   mock_data "aws_availability_zones" {
     defaults = { names = ["us-east-2a", "us-east-2b"] }
   }
@@ -238,4 +244,119 @@ run "upload_size_exception_does_not_bypass_attack_groups" {
     condition     = one(one(one(one([for rule in aws_wafv2_web_acl.app.rule : rule if rule.name == "CommonRules"]).statement).managed_rule_group_statement).rule_action_override).name == "SizeRestrictions_BODY" && length(one(one(one(one([for rule in aws_wafv2_web_acl.app.rule : rule if rule.name == "CommonRules"]).statement).managed_rule_group_statement).rule_action_override).action_to_use[0].count) == 1
     error_message = "A excecao existente deve continuar limitada a regra de tamanho do Common Rule Set."
   }
+}
+
+run "github_oidc_creates_provider_and_restricts_trust" {
+  command = plan
+  override_resource {
+    override_during = plan
+    target          = aws_iam_openid_connect_provider.github[0]
+    values          = { arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com" }
+  }
+  assert {
+    condition     = length(aws_iam_openid_connect_provider.github) == 1 && length(data.aws_iam_openid_connect_provider.github_existing) == 0 && aws_iam_openid_connect_provider.github[0].url == "https://token.actions.githubusercontent.com" && toset(aws_iam_openid_connect_provider.github[0].client_id_list) == toset(["sts.amazonaws.com"])
+    error_message = "Por padrao o provider deve ser criado para GitHub e audience STS."
+  }
+  assert {
+    condition     = length(jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement) == 1 && jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Action == "sts:AssumeRoleWithWebIdentity" && jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Principal.Federated == aws_iam_openid_connect_provider.github[0].arn && jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Condition.StringEquals == { "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com", "token.actions.githubusercontent.com:sub" = "repo:1GustavoBorgonha1/aplicacao_tb_fnl_si:environment:production" }
+    error_message = "A confianca deve exigir emissor, audience e subject exatos do repositorio/environment."
+  }
+}
+run "github_deploy_permissions_are_limited_to_master" {
+  command = plan
+  override_resource {
+    override_during = plan
+    target          = aws_instance.master
+    values          = { arn = "arn:aws:ec2:us-east-2:123456789012:instance/i-0123456789abcdef0" }
+  }
+  override_resource {
+    override_during = plan
+    target          = aws_iam_role.github_deploy
+    values          = { arn = "arn:aws:iam::123456789012:role/marmifit-github-deploy" }
+  }
+  assert {
+    condition     = length(jsondecode(aws_iam_role_policy.github_deploy.policy).Statement) == 2 && toset(flatten([for statement in jsondecode(aws_iam_role_policy.github_deploy.policy).Statement : statement.Action])) == toset(["ssm:SendCommand", "ssm:GetCommandInvocation"])
+    error_message = "A role nao deve ganhar permissoes adicionais de SSM, EC2, IAM, S3 ou RDS."
+  }
+  assert {
+    condition     = toset(one([for statement in jsondecode(aws_iam_role_policy.github_deploy.policy).Statement : statement if statement.Sid == "SendDeployCommandToMaster"]).Resource) == toset([aws_instance.master.arn, "arn:aws:ssm:us-east-2::document/AWS-RunShellScript"]) && one([for statement in jsondecode(aws_iam_role_policy.github_deploy.policy).Statement : statement if statement.Sid == "ReadDeployCommandResult"]).Resource == "*" && one([for statement in jsondecode(aws_iam_role_policy.github_deploy.policy).Statement : statement if statement.Sid == "ReadDeployCommandResult"]).Action == ["ssm:GetCommandInvocation"]
+    error_message = "SendCommand deve ter apenas master/documento; Resource '*' fica somente na leitura sem suporte a ARN."
+  }
+  assert {
+    condition     = output.github_deploy_role_arn == aws_iam_role.github_deploy.arn
+    error_message = "O ARN publicado deve ser o da role criada para a pipeline."
+  }
+}
+run "github_oidc_reuses_existing_provider" {
+  command = plan
+  variables { github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com" }
+  override_data {
+    target = data.aws_iam_openid_connect_provider.github_existing[0]
+    values = {
+      arn            = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+      url            = "token.actions.githubusercontent.com"
+      client_id_list = ["sts.amazonaws.com"]
+    }
+  }
+  assert {
+    condition     = length(aws_iam_openid_connect_provider.github) == 0 && length(data.aws_iam_openid_connect_provider.github_existing) == 1 && jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Principal.Federated == var.github_oidc_provider_arn
+    error_message = "Provider existente deve ser somente consultado, sem criar outro para a mesma URL."
+  }
+}
+run "github_oidc_rejects_other_account" {
+  command = plan
+  variables { github_oidc_provider_arn = "arn:aws:iam::999999999999:oidc-provider/token.actions.githubusercontent.com" }
+  expect_failures = [data.aws_iam_openid_connect_provider.github_existing]
+}
+run "github_oidc_rejects_existing_wrong_audience" {
+  command = plan
+  variables { github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com" }
+  override_data {
+    target = data.aws_iam_openid_connect_provider.github_existing[0]
+    values = {
+      arn            = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+      url            = "https://token.actions.githubusercontent.com"
+      client_id_list = ["other-audience"]
+    }
+  }
+  expect_failures = [data.aws_iam_openid_connect_provider.github_existing]
+}
+run "github_oidc_rejects_existing_wrong_issuer" {
+  command = plan
+  variables { github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com" }
+  override_data {
+    target = data.aws_iam_openid_connect_provider.github_existing[0]
+    values = {
+      arn            = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+      url            = "https://other.example.com"
+      client_id_list = ["sts.amazonaws.com"]
+    }
+  }
+  expect_failures = [data.aws_iam_openid_connect_provider.github_existing]
+}
+run "github_oidc_custom_repository_and_environment" {
+  command = plan
+  variables {
+    github_repository  = "owner-test/project-test"
+    github_environment = "production:restricted"
+  }
+  assert {
+    condition     = local.github_oidc_subject == "repo:owner-test/project-test:environment:production%3Arestricted"
+    error_message = "Subject deve acompanhar os parametros e codificar dois-pontos no nome do environment."
+  }
+}
+run "github_oidc_rejects_repository_wildcard" {
+  command = plan
+  variables { github_repository = "1GustavoBorgonha1/*" }
+  expect_failures = [var.github_repository]
+}
+run "github_oidc_rejects_environment_wildcard" {
+  command = plan
+  variables { github_environment = "*" }
+  expect_failures = [var.github_environment]
+}
+run "github_oidc_rejects_unrelated_provider_arn" {
+  command = plan
+  variables { github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/other.example.com" }
+  expect_failures = [var.github_oidc_provider_arn]
 }

@@ -174,3 +174,30 @@ variable "images_force_destroy" {
   type    = bool
   default = false
 }
+variable "github_repository" {
+  description = "Repositorio autorizado a assumir a role de deploy, no formato dono/repositorio."
+  type        = string
+  default     = "1GustavoBorgonha1/aplicacao_tb_fnl_si"
+  validation {
+    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$", var.github_repository))
+    error_message = "Informe um repositorio especifico no formato dono/repositorio, sem curingas."
+  }
+}
+variable "github_environment" {
+  description = "Environment do job GitHub Actions; restrinja suas branches a main nas configuracoes do GitHub."
+  type        = string
+  default     = "production"
+  validation {
+    condition     = length(trimspace(var.github_environment)) > 0 && var.github_environment == trimspace(var.github_environment) && !can(regex("[*?\\r\\n]", var.github_environment))
+    error_message = "Informe um environment especifico, sem curingas, quebras de linha ou espacos nas extremidades."
+  }
+}
+variable "github_oidc_provider_arn" {
+  description = "ARN do provider GitHub OIDC existente na conta. Null cria um novo; reutilizar evita duplicidade."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.github_oidc_provider_arn == null || can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:oidc-provider/token\\.actions\\.githubusercontent\\.com$", var.github_oidc_provider_arn))
+    error_message = "Use null ou o ARN de um provider IAM OIDC token.actions.githubusercontent.com."
+  }
+}
