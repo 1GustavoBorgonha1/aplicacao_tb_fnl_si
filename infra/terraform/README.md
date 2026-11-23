@@ -348,14 +348,48 @@ Uma execução posterior do deploy inicial pelo Terraform pode reaplicar as imag
 
 Referências: [OIDC AWS no GitHub Actions](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws), [permissões SSM](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ssm.html).
 
-## 8. Remover o laboratório
+## 8. Proteção, recuperação e remoção do laboratório
+
+O banco novo usa PostgreSQL privado, backups automáticos com retenção de **7 dias**, proteção contra exclusão e snapshot final habilitados. No seu `terraform.tfvars` final, atualize também os valores antigos: valores explícitos prevalecem sobre os defaults do código.
+
+```hcl
+db_backup_retention_days = 7
+db_final_snapshot = true
+db_deletion_protection = true
+db_final_snapshot_identifier = null
+```
+
+`db_deletion_protection` e `db_final_snapshot_identifier` são parâmetros novos. Com `null`, o nome do snapshot final será `<project_name>-final-<sufixo aleatório>`. Você pode informar um nome próprio válido e ainda não utilizado no RDS. Se um snapshot com o mesmo nome já existir, escolha outro nome antes de remover o banco, preservando o snapshot anterior. O `backend.hcl` não muda nesta entrega.
+
+### Recuperar dados
+
+Recriar a infraestrutura e executar o schema inicializa um banco novo; **não restaura os dados anteriores**. Para recuperar dados, no console RDS da mesma região selecione o snapshot manual/final e escolha **Restore snapshot**, ou selecione o banco e use **Restore to point in time** dentro da janela disponível de backups automáticos. A restauração cria outra instância, com outro endpoint: selecione a VPC, o subnet group e o security group privados deste projeto e mantenha acesso público desabilitado.
+
+Antes de conectar a aplicação ao banco restaurado, confira os dados e reconcilie a instância restaurada com o recurso Terraform (configuração e importação), as credenciais no SSM e o `DATABASE_URL` do Secret da aplicação. Essa integração exige um plano de recuperação específico; não basta executar o apply atual, que não recebe um snapshot de origem. A E4 prepara a preservação dos dados e documenta a recuperação manual, sem automatizar a restauração ou comprovar um tempo de recuperação.
+
+Os backups automáticos protegem a janela configurada enquanto o banco existe. Esta configuração mantem o comportamento padrão de excluir os backups automáticos ao remover a instância; o snapshot final é a cópia preservada após essa remoção. Snapshots finais persistem até sua exclusão manual e podem gerar custos de armazenamento. Guarde também o estado Terraform e as credenciais necessárias a recuperação em local seguro.
+
+### Remover o laboratório
+
+A remoção exige duas etapas. Primeiro, altere **somente** `db_deletion_protection = false` no seu tfvars, mantenha `db_final_snapshot = true` e aplique essa mudança no banco existente:
+
+```powershell
+terraform plan -out=desproteger.tfplan
+terraform apply desproteger.tfplan
+```
+
+Confira que o plano desativa a proteção no RDS. Somente após concluir esse apply, gere e revise o plano de remoção:
 
 ```powershell
 terraform plan -destroy -out=destroy.tfplan
 terraform apply destroy.tfplan
 ```
 
-Por padrão, o RDS é removido **sem snapshot final**. Configure `db_final_snapshot = true` antes se precisar preservá-lo. Um bucket de imagens não vazio impede sua exclusão; `images_force_destroy = true` permite remover também os objetos. O bucket de estado permanece. NAT, ALB, EC2, RDS, WAF e armazenamento geram custos enquanto existirem.
+Passar a variável apenas ao comando de destroy não altera previamente a proteção existente na AWS. Após a remoção, confira no RDS que o snapshot final está disponível. Antes de provisionar um novo laboratório, restaure `db_deletion_protection = true` no tfvars.
+
+Um bucket de imagens não vazio impede sua exclusão; `images_force_destroy = true` permite remover também os objetos. O bucket de estado permanece. NAT, ALB, EC2, RDS, WAF e armazenamento geram custos enquanto existirem.
+
+Referencias: [exclusão e snapshot final do RDS](https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_DeleteDBInstance.html), [restaurar um snapshot](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_RestoreFromSnapshot.html).
 
 ## Versionamento em infra/terraform
 

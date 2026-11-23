@@ -360,3 +360,74 @@ run "github_oidc_rejects_unrelated_provider_arn" {
   variables { github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/other.example.com" }
   expect_failures = [var.github_oidc_provider_arn]
 }
+
+run "rds_recovery_defaults" {
+  command = plan
+  override_resource {
+    override_during = plan
+    target          = random_id.suffix
+    values          = { hex = "a1b2c3d4" }
+  }
+  assert {
+    condition     = aws_db_instance.main.deletion_protection && aws_db_instance.main.backup_retention_period == 7 && !aws_db_instance.main.skip_final_snapshot && aws_db_instance.main.final_snapshot_identifier == "marmifit-final-a1b2c3d4"
+    error_message = "RDS novo deve ter protecao, sete dias de backups e snapshot final com nome estavel."
+  }
+}
+run "rds_custom_recovery_settings" {
+  command = plan
+  variables {
+    db_deletion_protection       = false
+    db_backup_retention_days     = 14
+    db_final_snapshot_identifier = "marmifit-final-20261122"
+  }
+  assert {
+    condition     = !aws_db_instance.main.deletion_protection && aws_db_instance.main.backup_retention_period == 14 && !aws_db_instance.main.skip_final_snapshot && aws_db_instance.main.final_snapshot_identifier == "marmifit-final-20261122"
+    error_message = "Desproteger deve preservar snapshot final e aceitar nome e retencao personalizados."
+  }
+}
+run "rds_skip_final_snapshot_explicitly" {
+  command = plan
+  variables {
+    db_final_snapshot            = false
+    db_final_snapshot_identifier = "unused-name"
+  }
+  assert {
+    condition     = aws_db_instance.main.skip_final_snapshot && aws_db_instance.main.final_snapshot_identifier == null
+    error_message = "Desativar explicitamente o snapshot deve omitir seu identificador."
+  }
+}
+run "rds_reject_snapshot_empty" {
+  command = plan
+  variables { db_final_snapshot_identifier = "" }
+  expect_failures = [var.db_final_snapshot_identifier]
+}
+run "rds_reject_snapshot_leading_number" {
+  command = plan
+  variables { db_final_snapshot_identifier = "1snapshot" }
+  expect_failures = [var.db_final_snapshot_identifier]
+}
+run "rds_reject_snapshot_trailing_hyphen" {
+  command = plan
+  variables { db_final_snapshot_identifier = "snapshot-" }
+  expect_failures = [var.db_final_snapshot_identifier]
+}
+run "rds_reject_snapshot_double_hyphen" {
+  command = plan
+  variables { db_final_snapshot_identifier = "snapshot--final" }
+  expect_failures = [var.db_final_snapshot_identifier]
+}
+run "rds_reject_snapshot_invalid_character" {
+  command = plan
+  variables { db_final_snapshot_identifier = "snapshot_final" }
+  expect_failures = [var.db_final_snapshot_identifier]
+}
+run "rds_reject_snapshot_too_long" {
+  command = plan
+  variables { db_final_snapshot_identifier = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+  expect_failures = [var.db_final_snapshot_identifier]
+}
+run "rds_reject_invalid_backup_retention" {
+  command = plan
+  variables { db_backup_retention_days = 0 }
+  expect_failures = [var.db_backup_retention_days]
+}

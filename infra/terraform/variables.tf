@@ -146,17 +146,36 @@ variable "db_schema_file" {
   }
 }
 variable "db_backup_retention_days" {
-  type    = number
-  default = 1
+  description = "Retencao dos backups automaticos do RDS, em dias."
+  type        = number
+  default     = 7
   validation {
     condition     = var.db_backup_retention_days >= 1 && var.db_backup_retention_days <= 35 && floor(var.db_backup_retention_days) == var.db_backup_retention_days
     error_message = "Use entre 1 e 35 dias."
   }
 }
 variable "db_final_snapshot" {
-  description = "True cria snapshot final ao excluir; false simplifica remocao do laboratorio."
+  description = "Cria snapshot final ao excluir o RDS."
   type        = bool
-  default     = false
+  default     = true
+}
+variable "db_deletion_protection" {
+  description = "Protege o RDS contra exclusao; desative e aplique antes de remover o laboratorio."
+  type        = bool
+  default     = true
+}
+variable "db_final_snapshot_identifier" {
+  description = "Nome opcional do snapshot final; null gera um nome com sufixo aleatorio. Use um nome ainda nao existente no RDS."
+  type        = string
+  default     = null
+  validation {
+    condition = var.db_final_snapshot_identifier == null ? true : (
+      can(regex("^[a-zA-Z][a-zA-Z0-9-]{0,254}$", var.db_final_snapshot_identifier)) &&
+      !endswith(var.db_final_snapshot_identifier, "-") &&
+      !strcontains(var.db_final_snapshot_identifier, "--")
+    )
+    error_message = "Use de 1 a 255 caracteres, iniciando com letra, apenas letras, numeros e hifens, sem hifen final nem hifens consecutivos."
+  }
 }
 variable "state_bucket_name" {
   description = "Bucket do bootstrap/backend, tambem recebe o SQL no prefixo bootstrap/."
