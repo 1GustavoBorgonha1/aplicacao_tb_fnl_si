@@ -171,3 +171,8 @@ variable "images_force_destroy" {
   type    = bool
   default = false
 }
+variable "github_repository" {
+  description = "Repositorio (dono/nome) cujo job de deploy pode assumir a role OIDC."
+  type        = string
+  default     = "1GustavoBorgonha1/aplicacao_tb_fnl_si"
+}
