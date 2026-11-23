@@ -137,17 +137,23 @@ variable "db_schema_file" {
   }
 }
 variable "db_backup_retention_days" {
-  type    = number
-  default = 1
+  description = "Dias de backup automatico (point-in-time). Base do RPO do plano de DR."
+  type        = number
+  default     = 7
   validation {
     condition     = var.db_backup_retention_days >= 1 && var.db_backup_retention_days <= 35 && floor(var.db_backup_retention_days) == var.db_backup_retention_days
     error_message = "Use entre 1 e 35 dias."
   }
 }
 variable "db_final_snapshot" {
-  description = "True cria snapshot final ao excluir; false simplifica remocao do laboratorio."
+  description = "True cria snapshot final ao excluir (plano de DR); false descarta o banco no destroy."
   type        = bool
-  default     = false
+  default     = true
+}
+variable "db_deletion_protection" {
+  description = "Impede excluir o RDS por engano. Defina false antes de um destroy intencional."
+  type        = bool
+  default     = true
 }
 variable "state_bucket_name" {
   description = "Bucket do bootstrap/backend, tambem recebe o SQL no prefixo bootstrap/."

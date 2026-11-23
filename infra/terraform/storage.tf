@@ -82,7 +82,7 @@ resource "aws_db_instance" "main" {
   publicly_accessible       = false
   multi_az                  = false
   backup_retention_period   = var.db_backup_retention_days
-  deletion_protection       = false
+  deletion_protection       = var.db_deletion_protection
   skip_final_snapshot       = !var.db_final_snapshot
   final_snapshot_identifier = var.db_final_snapshot ? "${var.project_name}-final-${random_id.suffix.hex}" : null
   engine_lifecycle_support  = "open-source-rds-extended-support-disabled"

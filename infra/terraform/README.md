@@ -256,7 +256,7 @@ terraform plan -destroy -out=destroy.tfplan
 terraform apply destroy.tfplan
 ```
 
-Por padrão, o RDS é removido **sem snapshot final**. Configure `db_final_snapshot = true` antes se precisar preservá-lo. Um bucket de imagens não vazio impede sua exclusão; `images_force_destroy = true` permite remover também os objetos. O bucket de estado permanece. NAT, ALB, EC2, RDS, WAF e armazenamento geram custos enquanto existirem.
+Por padrão, o RDS tem **proteção contra exclusão** e gera um **snapshot final** ao ser removido (plano de DR; backups automáticos de 7 dias). Para remover o laboratório, defina antes `db_deletion_protection = false` no `terraform.tfvars` e aplique; use `db_final_snapshot = false` só se não precisar preservar o banco. O snapshot final continua cobrando armazenamento até ser apagado. Um bucket de imagens não vazio impede sua exclusão; `images_force_destroy = true` permite remover também os objetos. O bucket de estado permanece. NAT, ALB, EC2, RDS, WAF e armazenamento geram custos enquanto existirem.
 
 ## Versionamento em infra/terraform
 
