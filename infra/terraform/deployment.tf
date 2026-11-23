@@ -102,7 +102,8 @@ resource "terraform_data" "deploy" {
     admin_version    = aws_ssm_parameter.admin_password.version
     document_version = aws_ssm_document.deploy.latest_version
     master_id        = aws_instance.master.id
-    worker_ids       = join(",", aws_instance.worker[*].id)
+    workers_asg      = aws_autoscaling_group.workers.name
+    worker_template  = tostring(aws_launch_template.worker.latest_version)
     db_resource_id   = aws_db_instance.main.resource_id
     schema_hash      = var.db_schema_file == "" ? "" : filesha256("${path.root}/${var.db_schema_file}")
     script_hash      = filesha256("${path.module}/scripts/Invoke-Deployment.ps1")
@@ -118,5 +119,5 @@ resource "terraform_data" "deploy" {
       DEPLOY_VERSION  = aws_ssm_document.deploy.latest_version
     }
   }
-  depends_on = [aws_instance.worker, aws_s3_object.schema, aws_iam_role_policy.master, aws_wafv2_web_acl_association.app, aws_lb_listener.http]
+  depends_on = [aws_autoscaling_group.workers, aws_s3_object.schema, aws_iam_role_policy.master, aws_wafv2_web_acl_association.app, aws_lb_listener.http]
 }

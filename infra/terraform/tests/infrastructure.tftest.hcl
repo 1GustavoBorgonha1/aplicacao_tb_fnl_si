@@ -19,7 +19,7 @@ variables {
 run "minimal_private_architecture" {
   command = plan
   assert {
-    condition     = length(aws_subnet.public) == 2 && length(aws_subnet.private) == 2 && length(aws_instance.worker) == 3 && !aws_instance.master.associate_public_ip_address && !one(aws_launch_template.worker.network_interfaces).associate_public_ip_address
+    condition     = length(aws_subnet.public) == 2 && length(aws_subnet.private) == 2 && aws_autoscaling_group.workers.min_size == 3 && aws_autoscaling_group.workers.max_size == 3 && aws_autoscaling_group.workers.desired_capacity == 3 && !aws_instance.master.associate_public_ip_address && !one(aws_launch_template.worker.network_interfaces).associate_public_ip_address
     error_message = "A rede deve manter tres workers e todos os nos privados."
   }
   assert {
@@ -27,8 +27,8 @@ run "minimal_private_architecture" {
     error_message = "O banco deve ser PostgreSQL privado e criptografado, Single-AZ."
   }
   assert {
-    condition     = aws_lb_listener.http.port == 80 && aws_lb_target_group.app.port == 30080 && aws_lb_target_group.app.health_check[0].path == "/api/health" && aws_lb_target_group.app.health_check[0].matcher == "200"
-    error_message = "ALB deve usar HTTP e verificar backend/banco pelo frontend."
+    condition     = aws_lb_listener.http.port == 80 && aws_lb_target_group.app.port == 30080 && aws_lb_target_group.app.health_check[0].path == "/" && aws_lb_target_group.app.health_check[0].matcher == "200"
+    error_message = "ALB deve usar HTTP e testar o frontend sem depender da disponibilidade do banco."
   }
 }
 run "separate_deployments_and_private_backend" {
@@ -137,11 +137,71 @@ run "worker_network_has_single_configuration_source" {
     values          = { id = "sg-0123456789abcdef1" }
   }
   assert {
-    condition     = length(aws_launch_template.worker.network_interfaces) == 1 && one(aws_launch_template.worker.network_interfaces).device_index == 0 && one(aws_launch_template.worker.network_interfaces).subnet_id == aws_subnet.private[0].id && !one(aws_launch_template.worker.network_interfaces).associate_public_ip_address && one(aws_launch_template.worker.network_interfaces).delete_on_termination
-    error_message = "Workers devem herdar interface primaria privada do template, sem IP publico."
+    condition     = length(aws_launch_template.worker.network_interfaces) == 1 && one(aws_launch_template.worker.network_interfaces).device_index == 0 && one(aws_launch_template.worker.network_interfaces).subnet_id == null && length(aws_autoscaling_group.workers.vpc_zone_identifier) == 1 && contains(aws_autoscaling_group.workers.vpc_zone_identifier, aws_subnet.private[0].id) && !one(aws_launch_template.worker.network_interfaces).associate_public_ip_address && one(aws_launch_template.worker.network_interfaces).delete_on_termination
+    error_message = "A subnet deve ser definida somente no ASG; a interface primaria continua privada no template."
   }
   assert {
     condition     = length(one(aws_launch_template.worker.network_interfaces).security_groups) == 2 && aws_launch_template.worker.vpc_security_group_ids == null
     error_message = "Security groups devem existir somente na interface, nunca no nivel da instancia/template."
   }
+}
+
+run "asg_uses_alb_and_versioned_template" {
+  command = plan
+  override_resource {
+    override_during = plan
+    target          = aws_lb_target_group.app
+    values          = { arn = "arn:aws:elasticloadbalancing:us-east-2:123456789012:targetgroup/test/1234567890123456" }
+  }
+  override_resource {
+    override_during = plan
+    target          = aws_launch_template.worker
+    values          = { id = "lt-0123456789abcdef0", latest_version = 7 }
+  }
+  assert {
+    condition     = aws_autoscaling_group.workers.health_check_type == "ELB" && aws_autoscaling_group.workers.health_check_grace_period == 1800 && contains(aws_autoscaling_group.workers.target_group_arns, aws_lb_target_group.app.arn) && length(aws_autoscaling_group.workers.target_group_arns) == 1
+    error_message = "ASG deve verificar o ALB, registrar o target group e respeitar a carencia inicial."
+  }
+  assert {
+    condition     = one(aws_autoscaling_group.workers.launch_template).id == aws_launch_template.worker.id && one(aws_autoscaling_group.workers.launch_template).version == "7" && one(aws_autoscaling_group.workers.instance_refresh).strategy == "Rolling" && one(one(aws_autoscaling_group.workers.instance_refresh).preferences).min_healthy_percentage == 66 && one(one(aws_autoscaling_group.workers.instance_refresh).preferences).max_healthy_percentage == 100 && one(one(aws_autoscaling_group.workers.instance_refresh).preferences).skip_matching
+    error_message = "O refresh deve usar a versao numerica do template e substituir instancias gradualmente."
+  }
+  assert {
+    condition     = aws_autoscaling_group.workers.wait_for_capacity_timeout == "0" && terraform_data.deploy.triggers_replace.workers_asg == aws_autoscaling_group.workers.name && terraform_data.deploy.triggers_replace.worker_template == "7"
+    error_message = "O primeiro deploy nao pode esperar targets saudaveis antes de publicar a aplicacao."
+  }
+  assert {
+    condition     = output.workers_autoscaling_group_name == aws_autoscaling_group.workers.name && alltrue([for tag in aws_autoscaling_group.workers.tag : tag.propagate_at_launch])
+    error_message = "ASG deve expor seu nome e propagar as tags para instancias substituidas."
+  }
+}
+run "replacement_worker_has_unique_k3s_identity" {
+  command = plan
+  override_resource {
+    override_during = plan
+    target          = aws_instance.master
+    values          = { private_ip = "10.20.10.10" }
+  }
+  assert {
+    condition     = strcontains(base64decode(aws_launch_template.worker.user_data), "with-node-id: true") && strcontains(base64decode(aws_launch_template.worker.user_data), "https://10.20.10.10:6443") && strcontains(base64decode(aws_launch_template.worker.user_data), "workload=application") && !strcontains(aws_instance.master.user_data, "with-node-id: true")
+    error_message = "Workers novos devem receber identidade unica, endpoint do master e label da aplicacao; master mantem identidade fixa."
+  }
+}
+run "custom_worker_grace_period" {
+  command = plan
+  variables { worker_health_check_grace_period = 2700 }
+  assert {
+    condition     = aws_autoscaling_group.workers.health_check_grace_period == 2700
+    error_message = "A carencia precisa ser configuravel para provisionamentos mais lentos."
+  }
+}
+run "reject_negative_worker_grace_period" {
+  command = plan
+  variables { worker_health_check_grace_period = -1 }
+  expect_failures = [var.worker_health_check_grace_period]
+}
+run "reject_fractional_worker_grace_period" {
+  command = plan
+  variables { worker_health_check_grace_period = 1.5 }
+  expect_failures = [var.worker_health_check_grace_period]
 }

@@ -12,17 +12,12 @@ resource "aws_lb_target_group" "app" {
   target_type = "instance"
   vpc_id      = aws_vpc.main.id
   health_check {
-    path                = "/api/health"
+    # Uma falha do banco/API nao deve fazer o ASG recriar workers saudaveis.
+    path                = "/"
     matcher             = "200"
     healthy_threshold   = 2
     unhealthy_threshold = 3
   }
-}
-resource "aws_lb_target_group_attachment" "worker" {
-  count            = 3
-  target_group_arn = aws_lb_target_group.app.arn
-  target_id        = aws_instance.worker[count.index].id
-  port             = 30080
 }
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.app.arn

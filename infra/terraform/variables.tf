@@ -39,6 +39,15 @@ variable "worker_instance_type" {
   type    = string
   default = "t3.small"
 }
+variable "worker_health_check_grace_period" {
+  description = "Carencia em segundos antes de o ASG substituir workers por falha no ALB. Deve cobrir o bootstrap e o primeiro deploy."
+  type        = number
+  default     = 1800
+  validation {
+    condition     = var.worker_health_check_grace_period >= 0 && floor(var.worker_health_check_grace_period) == var.worker_health_check_grace_period
+    error_message = "Use um numero inteiro de segundos maior ou igual a zero."
+  }
+}
 variable "k3s_version" {
   type    = string
   default = "v1.34.1+k3s1"

@@ -21,6 +21,8 @@ db_backup_retention_days = 1
 db_final_snapshot = false
 master_instance_type = "t3.small"
 worker_instance_type = "t3.small"
+# Aumente se o bootstrap/deploy inicial levar mais de 30 minutos.
+worker_health_check_grace_period = 1800
 k3s_version = "v1.34.1+k3s1"
 vpc_cidr = "10.20.0.0/16"
 images_force_destroy = false

@@ -36,6 +36,8 @@ disable:
   - servicelb
 %{ else ~}
 server: 'https://${master_ip}:6443'
+# Nova EC2 pode reutilizar IP/hostname de um no removido pelo ASG.
+with-node-id: true
 node-label:
   - 'workload=application'
 %{ endif ~}

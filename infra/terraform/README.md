@@ -15,7 +15,8 @@ Internet → ALB HTTP/80 com WAF → workers:30080 → frontend Nginx:8080
 |---|---|
 | Região | `us-east-2` |
 | Rede | Uma VPC, duas subnets públicas e duas privadas em duas zonas |
-| Kubernetes | K3s em quatro EC2 privadas: um master e três workers |
+| Kubernetes | K3s em quatro EC2 privadas: um master e três workers gerenciados por ASG |
+| Auto Scaling Group | Capacidade fixa de três workers, registro automático no ALB e substituição por falha de saúde |
 | Aplicação | Frontend e backend separados, duas réplicas de cada por padrão |
 | Entrada | ALB público, WAF e NodePort 30080; backend com Service interno |
 | Saída | Um NAT Gateway e um Gateway Endpoint para S3 |
@@ -28,6 +29,27 @@ Internet → ALB HTTP/80 com WAF → workers:30080 → frontend Nginx:8080
 Master, workers e RDS ficam na primeira zona. A segunda atende aos requisitos do ALB e do grupo de subnets do RDS. É um laboratório com master, NAT e banco únicos. O acesso é por HTTP no DNS do ALB; as imagens são lidas diretamente do S3 por HTTPS.
 
 O WAF possui regras gerenciadas e limite por IP, com tratamento de tamanho para permitir os uploads da aplicação. Os manifests mantêm containers sem root, NetworkPolicies e limites de recursos. O frontend não recebe os segredos do backend.
+
+### Workers e recuperação automática
+
+O `aws_autoscaling_group.workers` usa o launch template com `min_size = max_size = desired_capacity = 3`, na primeira subnet privada. Ele registra seus workers no target group do ALB e substitui instâncias reprovadas nos health checks EC2/ELB. Não é necessário executar Terraform a cada substituição. O `user_data` instala o agente K3s e obtém o token no Parameter Store; `with-node-id` evita colisões se outra EC2 reutilizar um IP ou hostname. Os pods podem ser reagendados pelo Kubernetes nos workers disponíveis.
+
+O health check do ALB usa **`/`**, servido pelo frontend Nginx. A rota **`/api/health`** continua disponível para testar backend e banco, mas não é usada para decidir a substituição das EC2: uma falha do RDS não deve causar recriação dos workers.
+
+No primeiro provisionamento, a aplicação ainda não existe quando o ASG é criado. Por isso o Terraform não aguarda targets saudáveis dentro da criação do grupo (`wait_for_capacity_timeout = "0"`); o passo SSM seguinte aguarda três workers `Ready` e os rollouts da aplicação. A carência `worker_health_check_grace_period`, de **1.800 segundos** por padrão, dá tempo ao bootstrap e ao deploy antes de substituições baseadas no ALB. Aumente o valor se o primeiro provisionamento demorar mais que 30 minutos.
+
+Mudanças na versão numérica do launch template iniciam um **instance refresh** gradual: mínimo saudável de 66%, máximo de 100%, aquecimento de 300 segundos e preservação das instâncias que já correspondem à versão desejada. O refresh é assíncrono e pode continuar depois do término do Terraform; acompanhe-o na aba Instance refresh do grupo no console AWS. A capacidade fixa não configura aumento por demanda, e o master continua sendo único.
+
+Os outputs agora são `workers_autoscaling_group_name` e `workers_autoscaling_group_arn`. O output antigo `worker_instance_ids` foi removido, pois os IDs das EC2 mudam conforme o ASG substitui os workers. Para consultar o grupo após provisionar:
+
+```powershell
+terraform output -raw workers_autoscaling_group_name
+aws autoscaling describe-auto-scaling-groups --profile projeto-aula --region us-east-2 --auto-scaling-group-names marmifit-workers --query "AutoScalingGroups[0].Instances[].[InstanceId,HealthStatus,LifecycleState]" --output table
+```
+
+Substitua perfil e nome do grupo pelos valores do seu ambiente. Para testar a recuperação em um laboratório já provisionado, registre os IDs atuais, interrompa uma EC2 worker pelo console e acompanhe a substituição no ASG, o registro do novo target no ALB e a entrada do novo nó no K3s. Aguarde o retorno a três workers ativos e valide a aplicação. Esse teste altera a AWS e não faz parte dos testes locais simulados.
+
+Como o ambiente atual foi removido, o próximo provisionamento já criará o ASG. Se este código for usado sobre uma instalação antiga com workers fixos, o plano removerá essas instâncias e seus attachments individuais e criará o grupo; revise esse plano e considere possível interrupção. RDS, buckets e master não são alvo dessa troca.
 
 ## 1. Instalar as ferramentas
 
@@ -46,7 +68,7 @@ Também é necessário Git para obter o repositório. Docker e kubectl locais n�
 
 ## 2. Configurar o acesso SSO
 
-O administrador precisa cadastrar seu usuário no IAM Identity Center e atribuir um permission set à conta de destino. Solicite **URL do portal SSO, região do Identity Center e ID da conta**. As permissões devem cobrir EC2/VPC, ALB, WAF, RDS, S3, SSM e IAM, incluindo `iam:PassRole`.
+O administrador precisa cadastrar seu usuário no IAM Identity Center e atribuir um permission set à conta de destino. Solicite **URL do portal SSO, região do Identity Center e ID da conta**. As permissões devem cobrir EC2/VPC/Auto Scaling, ALB, WAF, RDS, S3, SSM e IAM, incluindo `iam:PassRole`.
 
 Crie o perfil local:
 
@@ -247,7 +269,7 @@ sudo cloud-init status --long
 sudo tail -n 80 /var/log/cloud-init-output.log
 ```
 
-Os scripts informam a etapa em que falharam, sem imprimir segredos. Na AMI Amazon Linux 2023, a AWS CLI já está instalada; quando necessário, o nome correto do pacote é `awscli-2`. A configuração de rede dos workers fica na interface do launch template, evitando conflitos entre interface e security groups.
+Os scripts informam a etapa em que falharam, sem imprimir segredos. Na AMI Amazon Linux 2023, a AWS CLI já está instalada; quando necessário, o nome correto do pacote é `awscli-2`. A subnet dos workers é definida no ASG; os security groups e a opção de IP público ficam na interface do launch template, evitando configurações de rede duplicadas.
 
 ## 8. Remover o laboratório
 
