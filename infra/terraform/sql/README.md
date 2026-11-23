@@ -1,7 +1,11 @@
-O schema utilizado esta em `../schema.sql`, na raiz. O padrao e `db_schema_file = "schema.sql"`.
+# Schema oficial da AWS
 
-Origem: `infra/database/schema.sql` do commit `10a771b00532caff63ee1d94218bafaea9636f3b` da aplicacao MarmiFit. Inclui migrations 001, 002 e 003 (horarios de retirada).
+O arquivo oficial para inicialização do banco na AWS é [infra/terraform/schema.sql](../schema.sql). Esta pasta contém apenas esta documentação. O padrão é `db_schema_file = "schema.sql"`, com caminho relativo à raiz do Terraform, não à pasta `sql`.
 
-O arquivo usa PostgreSQL 16 e BEGIN/COMMIT. A importacao usa psql com ON_ERROR_STOP e TLS. Somente apos sucesso registra conclusao em public._terraform_bootstrap. Com caminho vazio, o backend aplica suas migrations no startup.
+O schema foi originalmente trazido de `infra/database/schema.sql` do commit `10a771b00532caff63ee1d94218bafaea9636f3b`. Esse caminho é apenas uma referência histórica: `infra/database` e `k8s/overlays/aws` já foram removidos do projeto. Não recrie cópias nesses locais.
 
-Editar o SQL apos a conclusao inicial nao reimporta o arquivo nem altera tabelas existentes. As migrations pendentes sao responsabilidade da imagem do backend. Nunca marque uma migration como aplicada sem executar suas alteracoes.
+O SQL consolida as migrations `001_init.sql`, `002_token_versao.sql` e `003_horario_retirada.sql` de `backend/migrations`. Inclui a versão do token para troca de senha e os campos e restrições de horário de retirada. Registra essas migrations em `schema_migrations`, usada pelo backend, e não cria o usuário administrador: essa criação cabe ao backend com as configurações do Secret.
+
+O arquivo usa PostgreSQL 16 e `BEGIN/COMMIT`. A importação inicial pelo master usa `psql` com `ON_ERROR_STOP` e TLS. Somente após sucesso registra a conclusão em `public._terraform_bootstrap`. Esse marcador controla o bootstrap do Terraform; `schema_migrations` controla as migrations da aplicação. Com `db_schema_file = ""`, o Terraform pula a importação e o backend aplica suas migrations no startup.
+
+Editar o SQL após a conclusão inicial não reimporta o arquivo nem altera tabelas existentes. As migrations pendentes são responsabilidade da imagem do backend. Ao adicionar uma migration à aplicação, revise também o schema consolidado para bancos novos, sem marcar uma migration como aplicada antes de executar suas alterações. O schema não substitui um backup nem restaura dados anteriores; consulte o [procedimento de recuperação](../README.md#recuperar-dados).

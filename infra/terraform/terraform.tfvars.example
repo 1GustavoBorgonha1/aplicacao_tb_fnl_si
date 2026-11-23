@@ -3,8 +3,8 @@ aws_profile = "projeto-aula"
 project_name = "marmifit"
 state_bucket_name = "SUBSTITUA-pelo-bucket-ja-criado-no-bootstrap"
 
-backend_image = "gustavoborgonha/marmifit-backend:10a771b00532caff63ee1d94218bafaea9636f3b"
-frontend_image = "gustavoborgonha/marmifit-frontend:10a771b00532caff63ee1d94218bafaea9636f3b"
+backend_image = "gustavoborgonha/marmifit-backend:latest"
+frontend_image = "gustavoborgonha/marmifit-frontend:latest"
 backend_replicas = 2
 frontend_replicas = 2
 admin_email = "admin@marmifit.local"
@@ -17,10 +17,23 @@ db_name = "marmifit"
 db_username = "appadmin"
 db_instance_class = "db.t3.micro"
 db_allocated_storage = 20
-db_backup_retention_days = 1
-db_final_snapshot = false
+db_backup_retention_days = 7
+db_final_snapshot = true
+db_deletion_protection = true
+# Null gera o nome; informe outro nome se o snapshot final anterior ja existir.
+db_final_snapshot_identifier = null
 master_instance_type = "t3.small"
 worker_instance_type = "t3.small"
+# Aumente se o bootstrap/deploy inicial levar mais de 30 minutos.
+worker_health_check_grace_period = 1800
 k3s_version = "v1.34.1+k3s1"
 vpc_cidr = "10.20.0.0/16"
 images_force_destroy = false
+
+# OIDC para o job de deploy existente, sem access keys no GitHub.
+github_repository = "1GustavoBorgonha1/aplicacao_tb_fnl_si"
+# IDs da API GitHub; mantenha coerentes com o repositorio acima.
+github_repository_ids = { owner_id = "176631057", repository_id = "1462042647" }
+github_environment = "production"
+# Null cria o provider; se ja existir na conta, informe seu ARN aqui.
+github_oidc_provider_arn = null

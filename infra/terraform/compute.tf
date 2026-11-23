@@ -40,12 +40,9 @@ resource "aws_launch_template" "worker" {
   name_prefix   = "${var.project_name}-worker-"
   image_id      = nonsensitive(data.aws_ssm_parameter.ami.value)
   instance_type = var.worker_instance_type
-  # Rede e security groups juntos na interface primaria do template.
-  # Nao duplicar subnet/IP publico no aws_instance: isso cria outra estrutura
-  # NetworkInterfaces no RunInstances e conflita com grupos no nivel da instancia.
+  # O ASG escolhe a subnet; grupos e IP publico ficam na interface primaria.
   network_interfaces {
     device_index                = 0
-    subnet_id                   = aws_subnet.private[0].id
     associate_public_ip_address = false
     delete_on_termination       = true
     security_groups             = [aws_security_group.cluster.id, aws_security_group.worker.id]
@@ -69,13 +66,48 @@ resource "aws_launch_template" "worker" {
     version = var.k3s_version, role = "agent", master_ip = aws_instance.master.private_ip, node_name = ""
   }))
 }
-resource "aws_instance" "worker" {
-  count = 3
-  # Toda a rede e herdada do launch template, sem overrides conflitantes.
+resource "aws_autoscaling_group" "workers" {
+  name                      = "${var.project_name}-workers"
+  min_size                  = 3
+  max_size                  = 3
+  desired_capacity          = 3
+  vpc_zone_identifier       = [aws_subnet.private[0].id]
+  target_group_arns         = [aws_lb_target_group.app.arn]
+  health_check_type         = "ELB"
+  health_check_grace_period = var.worker_health_check_grace_period
+
+  # A aplicacao so e publicada depois de criar o grupo. Esperar pelo ALB
+  # aqui impediria o primeiro deploy; o script SSM aguarda tres nos Ready.
+  wait_for_capacity_timeout = "0"
+
   launch_template {
     id      = aws_launch_template.worker.id
-    version = aws_launch_template.worker.latest_version
+    version = tostring(aws_launch_template.worker.latest_version)
   }
-  tags       = { Name = "${var.project_name}-worker-${count.index + 1}" }
-  depends_on = [aws_route.nat, aws_route_table_association.private, aws_iam_role_policy.worker, aws_iam_role_policy_attachment.worker_ssm]
+
+  instance_refresh {
+    strategy = "Rolling"
+    preferences {
+      min_healthy_percentage = 66
+      max_healthy_percentage = 100
+      instance_warmup        = 300
+      skip_matching          = true
+    }
+  }
+
+  dynamic "tag" {
+    for_each = {
+      Name      = "${var.project_name}-worker"
+      Project   = var.project_name
+      ManagedBy = "Terraform"
+      Purpose   = "classroom"
+    }
+    content {
+      key                 = tag.key
+      value               = tag.value
+      propagate_at_launch = true
+    }
+  }
+
+  depends_on = [aws_route.nat, aws_route_table_association.private, aws_iam_role_policy.worker, aws_iam_role_policy_attachment.worker_ssm, aws_lb_listener.http]
 }

@@ -39,17 +39,26 @@ variable "worker_instance_type" {
   type    = string
   default = "t3.small"
 }
+variable "worker_health_check_grace_period" {
+  description = "Carencia em segundos antes de o ASG substituir workers por falha no ALB. Deve cobrir o bootstrap e o primeiro deploy."
+  type        = number
+  default     = 1800
+  validation {
+    condition     = var.worker_health_check_grace_period >= 0 && floor(var.worker_health_check_grace_period) == var.worker_health_check_grace_period
+    error_message = "Use um numero inteiro de segundos maior ou igual a zero."
+  }
+}
 variable "k3s_version" {
   type    = string
   default = "v1.34.1+k3s1"
 }
 variable "backend_image" {
-  description = "Imagem publica Linux amd64, com tag de versao ou digest."
+  description = "Imagem publica Linux amd64, com tag (latest por padrao) ou digest."
   type        = string
-  default     = "gustavoborgonha/marmifit-backend:10a771b00532caff63ee1d94218bafaea9636f3b"
+  default     = "gustavoborgonha/marmifit-backend:latest"
   validation {
-    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9._/:@+-]*(:[A-Za-z0-9_][A-Za-z0-9_.-]*|@sha256:[a-f0-9]{64})$", var.backend_image)) && !endswith(var.backend_image, ":latest")
-    error_message = "Informe imagem com tag explicita (exceto latest) ou digest sha256."
+    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9._/:@+-]*(:[A-Za-z0-9_][A-Za-z0-9_.-]*|@sha256:[a-f0-9]{64})$", var.backend_image))
+    error_message = "Informe imagem com tag explicita (incluindo latest) ou digest sha256."
   }
 }
 variable "backend_replicas" {
@@ -61,12 +70,12 @@ variable "backend_replicas" {
   }
 }
 variable "frontend_image" {
-  description = "Imagem publica Linux amd64, com tag de versao ou digest."
+  description = "Imagem publica Linux amd64, com tag (latest por padrao) ou digest."
   type        = string
-  default     = "gustavoborgonha/marmifit-frontend:10a771b00532caff63ee1d94218bafaea9636f3b"
+  default     = "gustavoborgonha/marmifit-frontend:latest"
   validation {
-    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9._/:@+-]*(:[A-Za-z0-9_][A-Za-z0-9_.-]*|@sha256:[a-f0-9]{64})$", var.frontend_image)) && !endswith(var.frontend_image, ":latest")
-    error_message = "Informe imagem com tag explicita (exceto latest) ou digest sha256."
+    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9._/:@+-]*(:[A-Za-z0-9_][A-Za-z0-9_.-]*|@sha256:[a-f0-9]{64})$", var.frontend_image))
+    error_message = "Informe imagem com tag explicita (incluindo latest) ou digest sha256."
   }
 }
 variable "frontend_replicas" {
@@ -137,17 +146,36 @@ variable "db_schema_file" {
   }
 }
 variable "db_backup_retention_days" {
-  type    = number
-  default = 1
+  description = "Retencao dos backups automaticos do RDS, em dias."
+  type        = number
+  default     = 7
   validation {
     condition     = var.db_backup_retention_days >= 1 && var.db_backup_retention_days <= 35 && floor(var.db_backup_retention_days) == var.db_backup_retention_days
     error_message = "Use entre 1 e 35 dias."
   }
 }
 variable "db_final_snapshot" {
-  description = "True cria snapshot final ao excluir; false simplifica remocao do laboratorio."
+  description = "Cria snapshot final ao excluir o RDS."
   type        = bool
-  default     = false
+  default     = true
+}
+variable "db_deletion_protection" {
+  description = "Protege o RDS contra exclusao; desative e aplique antes de remover o laboratorio."
+  type        = bool
+  default     = true
+}
+variable "db_final_snapshot_identifier" {
+  description = "Nome opcional do snapshot final; null gera um nome com sufixo aleatorio. Use um nome ainda nao existente no RDS."
+  type        = string
+  default     = null
+  validation {
+    condition = var.db_final_snapshot_identifier == null ? true : (
+      can(regex("^[a-zA-Z][a-zA-Z0-9-]{0,254}$", var.db_final_snapshot_identifier)) &&
+      !endswith(var.db_final_snapshot_identifier, "-") &&
+      !strcontains(var.db_final_snapshot_identifier, "--")
+    )
+    error_message = "Use de 1 a 255 caracteres, iniciando com letra, apenas letras, numeros e hifens, sem hifen final nem hifens consecutivos."
+  }
 }
 variable "state_bucket_name" {
   description = "Bucket do bootstrap/backend, tambem recebe o SQL no prefixo bootstrap/."
@@ -164,4 +192,49 @@ variable "images_cors_origins" {
 variable "images_force_destroy" {
   type    = bool
   default = false
+}
+variable "github_repository" {
+  description = "Repositorio autorizado a assumir a role de deploy, no formato dono/repositorio."
+  type        = string
+  default     = "1GustavoBorgonha1/aplicacao_tb_fnl_si"
+  validation {
+    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$", var.github_repository))
+    error_message = "Informe um repositorio especifico no formato dono/repositorio, sem curingas."
+  }
+}
+variable "github_repository_ids" {
+  description = "IDs imutaveis do dono e repositorio, consultados na API GitHub. Null usa o subject legado, apenas para repositorios que ainda adotem esse formato."
+  type = object({
+    owner_id      = string
+    repository_id = string
+  })
+  default = {
+    owner_id      = "176631057"
+    repository_id = "1462042647"
+  }
+  validation {
+    condition = var.github_repository_ids == null ? true : (
+      can(regex("^[1-9][0-9]*$", var.github_repository_ids.owner_id)) &&
+      can(regex("^[1-9][0-9]*$", var.github_repository_ids.repository_id))
+    )
+    error_message = "Informe IDs numericos positivos do dono e repositorio, ou null para subject legado."
+  }
+}
+variable "github_environment" {
+  description = "Environment do job GitHub Actions; restrinja suas branches a main nas configuracoes do GitHub."
+  type        = string
+  default     = "production"
+  validation {
+    condition     = length(trimspace(var.github_environment)) > 0 && var.github_environment == trimspace(var.github_environment) && !can(regex("[*?\\r\\n]", var.github_environment))
+    error_message = "Informe um environment especifico, sem curingas, quebras de linha ou espacos nas extremidades."
+  }
+}
+variable "github_oidc_provider_arn" {
+  description = "ARN do provider GitHub OIDC existente na conta. Null cria um novo; reutilizar evita duplicidade."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.github_oidc_provider_arn == null || can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:oidc-provider/token\\.actions\\.githubusercontent\\.com$", var.github_oidc_provider_arn))
+    error_message = "Use null ou o ARN de um provider IAM OIDC token.actions.githubusercontent.com."
+  }
 }

@@ -39,3 +39,8 @@ for i in $(seq 1 12); do curl -s -o /dev/null -w "%{http_code} " -XPOST localhos
 curl -sI localhost:8080/
 ```
 Ferramentas da aula também podem ser apontadas para `http://localhost:8080` **apenas no ambiente local**: `sqlmap -u ... --data`, `dirb http://localhost:8080`, `nikto -h localhost -p 8080`.
+
+
+## Autenticacao do deploy AWS
+
+A role OIDC exige audience `sts.amazonaws.com` e subject exato do repositorio com os IDs imutaveis de dono/repositorio e environment `production`. A configuracao do environment deve limitar deploys a `main`. A role envia comandos SSM somente ao master; nao recebe permissoes de provisionamento Terraform. PRs de forks nao recebem secrets e o Quality Gate permanece obrigatorio para build/deploy. O SonarQube analisa tambem `infra/terraform`; os testes Terraform no CI usam providers simulados, sem provisionar recursos AWS.

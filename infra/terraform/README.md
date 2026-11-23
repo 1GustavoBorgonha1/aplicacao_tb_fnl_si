@@ -15,7 +15,8 @@ Internet → ALB HTTP/80 com WAF → workers:30080 → frontend Nginx:8080
 |---|---|
 | Região | `us-east-2` |
 | Rede | Uma VPC, duas subnets públicas e duas privadas em duas zonas |
-| Kubernetes | K3s em quatro EC2 privadas: um master e três workers |
+| Kubernetes | K3s em quatro EC2 privadas: um master e três workers gerenciados por ASG |
+| Auto Scaling Group | Capacidade fixa de três workers, registro automático no ALB e substituição por falha de saúde |
 | Aplicação | Frontend e backend separados, duas réplicas de cada por padrão |
 | Entrada | ALB público, WAF e NodePort 30080; backend com Service interno |
 | Saída | Um NAT Gateway e um Gateway Endpoint para S3 |
@@ -24,10 +25,60 @@ Internet → ALB HTTP/80 com WAF → workers:30080 → frontend Nginx:8080
 | Estado | Outro bucket S3, privado, versionado e criptografado, com lock nativo |
 | Administração | Systems Manager; sem SSH público ou IP público nas EC2 |
 | Segredos | Senha do banco, senha inicial do admin e JWT no Parameter Store |
+| Deploy GitHub | Provider IAM OIDC e role restrita ao repositório/environment, com envio de comando SSM somente ao master |
 
 Master, workers e RDS ficam na primeira zona. A segunda atende aos requisitos do ALB e do grupo de subnets do RDS. É um laboratório com master, NAT e banco únicos. O acesso é por HTTP no DNS do ALB; as imagens são lidas diretamente do S3 por HTTPS.
 
-O WAF possui regras gerenciadas e limite por IP, com tratamento de tamanho para permitir os uploads da aplicação. Os manifests mantêm containers sem root, NetworkPolicies e limites de recursos. O frontend não recebe os segredos do backend.
+O WAF possui Common Rule Set, SQLi Rule Set, Known Bad Inputs e limite por IP, com tratamento de tamanho para permitir os uploads da aplicação. Os manifests mantêm containers sem root, NetworkPolicies e limites de recursos. O frontend não recebe os segredos do backend.
+
+### Fontes oficiais da AWS
+
+Os manifests usados na AWS ficam em [manifests/](manifests/README.md) e o schema de inicialização fica em [schema.sql](schema.sql), documentado em [sql/README.md](sql/README.md). O Terraform utiliza esses arquivos locais; `k8s/overlays/aws` e `infra/database` já foram removidos do projeto e não devem ser recriados como cópias.
+
+`k8s/base` continua atendendo aos testes e ambientes locais. Mudanças de segurança nos manifests da AWS (`securityContext`, NetworkPolicy e limites de recursos) devem ser comunicadas ao responsável pela aplicação para avaliação e sincronização da base local. Não existe sincronização automática. Ao evoluir as migrations do backend, revise também o schema consolidado destinado a bancos novos; bancos já inicializados recebem as migrations pela aplicação.
+
+### Proteções do WAF
+
+A Web ACL regional continua associada ao ALB, com as seguintes prioridades:
+
+| Prioridade | Regra | Função |
+|---|---|---|
+| 1 | `AWSManagedRulesCommonRuleSet` | Proteções comuns de aplicações web |
+| 2 | `BlockLargeBodiesOutsideUploads` | Preserva o bloqueio de corpos grandes fora das rotas de upload previstas |
+| 3 | `RateLimit` | Limite de requisições por IP |
+| 4 | `AWSManagedRulesSQLiRuleSet` | Inspeção de padrões de SQL injection |
+| 5 | `AWSManagedRulesKnownBadInputsRuleSet` | Inspeção de entradas associadas à exploração de vulnerabilidades |
+
+Os grupos usam `vendor_name = "AWS"` e `override_action = none`, preservando as ações definidas pela AWS para suas regras. Isso não coloca os grupos inteiros em Count nem força Block em regras que a AWS definiu como Count. A exceção de upload continua limitada ao tamanho do corpo no Common Rule Set; os novos grupos também inspecionam essas rotas, sem exclusões gerais. No ALB, a inspeção do corpo pelo WAF é limitada aos primeiros 8 KiB; ela não valida o conteúdo completo de uma foto. A aplicação mantém a validação do tipo e tamanho da imagem.
+
+Cada regra possui métricas próprias no CloudWatch e amostragem de requisições. Após provisionar, consulte **WAF & Shield → Web ACLs → marmifit-waf**, escolhendo a região do ambiente e o nome real do projeto. Examine métricas e requisições amostradas ao investigar respostas 403. Esta entrega não cria um destino de logs completos do WAF.
+
+A validação local confirma a configuração das regras, não a detecção de ataques reais. Após um provisionamento autorizado, valide login, cadastro e upload legítimos e faça testes controlados de SQL injection no próprio laboratório, conferindo no WAF qual regra correspondeu à requisição. Não basta observar um HTTP 403, pois a aplicação também pode negar o acesso. Caso uma requisição legítima seja bloqueada, investigue a regra específica antes de propor uma exceção.
+
+Essas proteções complementam as consultas parametrizadas e validações do backend. Não há novo parâmetro obrigatório em `terraform.tfvars` ou `backend.hcl`.
+
+Referências: [grupo SQLi](https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-use-case.html), [grupos Common e Known Bad Inputs](https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html).
+
+### Workers e recuperação automática
+
+O `aws_autoscaling_group.workers` usa o launch template com `min_size = max_size = desired_capacity = 3`, na primeira subnet privada. Ele registra seus workers no target group do ALB e substitui instâncias reprovadas nos health checks EC2/ELB. Não é necessário executar Terraform a cada substituição. O `user_data` instala o agente K3s e obtém o token no Parameter Store; `with-node-id` evita colisões se outra EC2 reutilizar um IP ou hostname. Os pods podem ser reagendados pelo Kubernetes nos workers disponíveis.
+
+O health check do ALB usa **`/`**, servido pelo frontend Nginx. A rota **`/api/health`** continua disponível para testar backend e banco, mas não é usada para decidir a substituição das EC2: uma falha do RDS não deve causar recriação dos workers.
+
+No primeiro provisionamento, a aplicação ainda não existe quando o ASG é criado. Por isso o Terraform não aguarda targets saudáveis dentro da criação do grupo (`wait_for_capacity_timeout = "0"`); o passo SSM seguinte aguarda três workers `Ready` e os rollouts da aplicação. A carência `worker_health_check_grace_period`, de **1.800 segundos** por padrão, dá tempo ao bootstrap e ao deploy antes de substituições baseadas no ALB. Aumente o valor se o primeiro provisionamento demorar mais que 30 minutos.
+
+Mudanças na versão numérica do launch template iniciam um **instance refresh** gradual: mínimo saudável de 66%, máximo de 100%, aquecimento de 300 segundos e preservação das instâncias que já correspondem à versão desejada. O refresh é assíncrono e pode continuar depois do término do Terraform; acompanhe-o na aba Instance refresh do grupo no console AWS. A capacidade fixa não configura aumento por demanda, e o master continua sendo único.
+
+Os outputs agora são `workers_autoscaling_group_name` e `workers_autoscaling_group_arn`. O output antigo `worker_instance_ids` foi removido, pois os IDs das EC2 mudam conforme o ASG substitui os workers. Para consultar o grupo após provisionar:
+
+```powershell
+terraform output -raw workers_autoscaling_group_name
+aws autoscaling describe-auto-scaling-groups --profile projeto-aula --region us-east-2 --auto-scaling-group-names marmifit-workers --query "AutoScalingGroups[0].Instances[].[InstanceId,HealthStatus,LifecycleState]" --output table
+```
+
+Substitua perfil e nome do grupo pelos valores do seu ambiente. Para testar a recuperação em um laboratório já provisionado, registre os IDs atuais, interrompa uma EC2 worker pelo console e acompanhe a substituição no ASG, o registro do novo target no ALB e a entrada do novo nó no K3s. Aguarde o retorno a três workers ativos e valide a aplicação. Esse teste altera a AWS e não faz parte dos testes locais simulados.
+
+Como o ambiente atual foi removido, o próximo provisionamento já criará o ASG. Se este código for usado sobre uma instalação antiga com workers fixos, o plano removerá essas instâncias e seus attachments individuais e criará o grupo; revise esse plano e considere possível interrupção. RDS, buckets e master não são alvo dessa troca.
 
 ## 1. Instalar as ferramentas
 
@@ -46,7 +97,7 @@ Também é necessário Git para obter o repositório. Docker e kubectl locais n�
 
 ## 2. Configurar o acesso SSO
 
-O administrador precisa cadastrar seu usuário no IAM Identity Center e atribuir um permission set à conta de destino. Solicite **URL do portal SSO, região do Identity Center e ID da conta**. As permissões devem cobrir EC2/VPC, ALB, WAF, RDS, S3, SSM e IAM, incluindo `iam:PassRole`.
+O administrador precisa cadastrar seu usuário no IAM Identity Center e atribuir um permission set à conta de destino. Solicite **URL do portal SSO, região do Identity Center e ID da conta**. As permissões devem cobrir EC2/VPC/Auto Scaling, ALB, WAF, RDS, S3, SSM e IAM, incluindo `iam:PassRole`.
 
 Crie o perfil local:
 
@@ -131,11 +182,11 @@ Use **o mesmo bucket** no backend e no tfvars; o backend não lê essas variáve
 As imagens configuradas são:
 
 ```hcl
-backend_image  = "gustavoborgonha/marmifit-backend:10a771b00532caff63ee1d94218bafaea9636f3b"
-frontend_image = "gustavoborgonha/marmifit-frontend:10a771b00532caff63ee1d94218bafaea9636f3b"
+backend_image  = "gustavoborgonha/marmifit-backend:latest"
+frontend_image = "gustavoborgonha/marmifit-frontend:latest"
 ```
 
-Use tags de versão ou digest, sem `latest`. `backend_environment = {}` também é válido: o log padrão da aplicação é `info`. Esse mapa aceita apenas configurações não sensíveis; conexão, segredos, TLS e dados do S3 são fornecidos pelo Terraform.
+O padrão usa `latest` para backend e frontend; tags de versão ou digest também são aceitos. `backend_environment = {}` também é válido: o log padrão da aplicação é `info`. Esse mapa aceita apenas configurações não sensíveis; conexão, segredos, TLS e dados do S3 são fornecidos pelo Terraform.
 
 ## 5. Provisionar e fazer o deploy
 
@@ -212,14 +263,33 @@ Não publique senhas, tokens, plans ou estados: o estado Terraform contém segre
 
 ## 7. Atualizar a aplicação
 
-Altere `backend_image`, `frontend_image` ou ambas no tfvars para imagens já publicadas:
+O padrão usa as imagens `gustavoborgonha/marmifit-backend:latest` e `gustavoborgonha/marmifit-frontend:latest`. Atualize essas duas referências no seu `terraform.tfvars` final se ele ainda contiver o SHA antigo. Não há variáveis novas nesta entrega.
+
+Os containers usam `imagePullPolicy: Always`: a cada início, o Kubernetes consulta o registro para resolver a imagem atual da tag. Publicar outra imagem com `latest` não reinicia pods em execução; um plan/apply com as mesmas referências também não detecta a mudança do conteúdo no registro.
+
+Depois de confirmar a publicação das duas imagens, abra uma sessão no master em **Systems Manager -> Session Manager** e execute (substitua `marmifit` se usar outro `project_name`):
+
+```bash
+sudo k3s kubectl rollout restart deployment/backend deployment/frontend -n marmifit
+sudo k3s kubectl rollout status deployment/backend -n marmifit --timeout=600s
+sudo k3s kubectl rollout status deployment/frontend -n marmifit --timeout=600s
+sudo k3s kubectl get pods -n marmifit -o wide
+```
+
+Esse procedimento recria gradualmente os pods e busca a versão apontada por `latest`, sem recriar EC2/RDS. A tag é mutável: registre os digests efetivamente utilizados se precisar identificar a versão executada. Republicar `latest` elimina a referência anterior dessa tag; `rollout undo` sozinho não garante recuperar a imagem anterior. Para voltar de versão, use uma tag ou digest anterior ainda disponível; migrations e dados do banco não são desfeitos por esse procedimento.
+
+Se precisar mudar o registro, tag ou digest declarado, altere `backend_image` e/ou `frontend_image` no tfvars e aplique um plano novo:
 
 ```powershell
 terraform plan -out=update.tfplan
 terraform apply update.tfplan
 ```
 
-O SSM atualiza os Deployments e aguarda o rollout. Uma troca somente de imagem não recria EC2/RDS. Para voltar de versão, restaure a referência anterior e aplique outro plano; isso não desfaz migrations ou dados do banco.
+O SSM aplica os Deployments e acompanha o rollout. Se o conteúdo de `latest` mudou sem mudar a referência declarada, use o reinício acima.
+
+**Pipeline:** o build publica tags SHA e `latest`. O deploy usa `latest`, executa `kubectl rollout restart` e acompanha os rollouts via SSM. Publicacao e verificacoes precisam terminar com sucesso antes do deploy. Esse job depende de `DEPLOY_ENABLED=true` e do environment `production` corretamente configurado. A pipeline nao executa Terraform.
+
+Referencia: [politica de download de imagens do Kubernetes](https://kubernetes.io/docs/concepts/containers/images/#image-pull-policy).
 
 Para diagnóstico, consulte **Systems Manager → Run Command**. No master, via SSM:
 
@@ -247,16 +317,112 @@ sudo cloud-init status --long
 sudo tail -n 80 /var/log/cloud-init-output.log
 ```
 
-Os scripts informam a etapa em que falharam, sem imprimir segredos. Na AMI Amazon Linux 2023, a AWS CLI já está instalada; quando necessário, o nome correto do pacote é `awscli-2`. A configuração de rede dos workers fica na interface do launch template, evitando conflitos entre interface e security groups.
+Os scripts informam a etapa em que falharam, sem imprimir segredos. Na AMI Amazon Linux 2023, a AWS CLI já está instalada; quando necessário, o nome correto do pacote é `awscli-2`. A subnet dos workers é definida no ASG; os security groups e a opção de IP público ficam na interface do launch template, evitando configurações de rede duplicadas.
 
-## 8. Remover o laboratório
+### Ativar o deploy da aplicação pelo GitHub Actions (OIDC)
+
+O workflow existente em `.github/workflows/ci.yml` já usa OIDC, environment `production` e SSM para trocar as imagens. O Terraform cria a confiança e a role; não configura variáveis nem permissões do repositório GitHub. Nenhuma access key é necessária no GitHub. O primeiro provisionamento/deploy continua pelo Terraform; depois a pipeline pode atualizar as imagens sem executar o script PowerShell local.
+
+**1. Conferir os novos parâmetros no `terraform.tfvars` final:**
+
+```hcl
+github_repository        = "1GustavoBorgonha1/aplicacao_tb_fnl_si"
+github_environment       = "production"
+github_oidc_provider_arn = null
+```
+
+Esses são os padrões, então podem ser omitidos se forem adequados ao ambiente. Não há alteração no `backend.hcl`.
+
+Com `github_oidc_provider_arn = null`, o Terraform cria o provider `https://token.actions.githubusercontent.com`, com audience `sts.amazonaws.com`. Existe somente um cadastro por URL em cada conta IAM. Antes de provisionar, confira em IAM → Identity providers se ele já existe. Nesse caso, informe seu ARN no parâmetro em vez de tentar criar outro:
+
+```hcl
+# Exemplo fictício: substitua o ID da conta pelo seu.
+github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+```
+
+O provider reutilizado é apenas consultado e deve pertencer à mesma conta, ter o emissor correto e aceitar `sts.amazonaws.com`. Ele não será removido pelo destroy deste projeto. Um provider criado pelo próprio Terraform pertence ao ciclo de vida desta infraestrutura.
+
+O parametro `github_repository_ids` informa os IDs imutaveis consultados no GitHub. Para este projeto, use:
+
+```hcl
+github_repository_ids = { owner_id = "176631057", repository_id = "1462042647" }
+```
+
+Ao trocar de repositorio, consulte os IDs de `owner.id` e `id` em `GET /repos/OWNER/REPO`, e confira `GET /repos/OWNER/REPO/actions/oidc/customization/sub`. Use `github_repository_ids = null` somente se o repositorio realmente utilizar o subject legado sem IDs. Os nomes em `github_repository` e os IDs precisam pertencer ao mesmo repositorio; o Terraform nao consulta a API GitHub durante o apply.
+
+A confiança usa `StringEquals` para audience e subject exatos: `repo:1GustavoBorgonha1@176631057/aplicacao_tb_fnl_si@1462042647:environment:production`. Forks e outros environments não são autorizados pelo padrão. Como o job usa um environment, o subject não contém a branch; a restrição à `main` precisa ser feita no GitHub. Ao alterar repositório/environment, mantenha os nomes coerentes com o workflow real. O workflow atual usa namespace `marmifit`; mantenha esse `project_name` ou peça ao responsável pelo workflow para ajustar o namespace.
+
+**2. Provisionar e concluir o primeiro deploy:** gere e revise um plano novo e execute o apply, conforme a seção de provisionamento. Depois consulte:
+
+```powershell
+terraform output -raw github_deploy_role_arn
+terraform output -raw master_instance_id
+```
+
+**3. Configurar o GitHub, com ajuda de um administrador do repositório:**
+
+- Em **Settings → Environments**, criar/conferir `production` e configurar **Deployment branches and tags** para permitir somente a branch `main`. Se forem exigidos reviewers, cada deploy aguardará essa aprovação.
+- Em **Settings → Secrets and variables → Actions → Variables** (ou nas variáveis do environment `production`), preencher:
+
+| Variável | Valor |
+|---|---|
+| `AWS_REGION` | `us-east-2` |
+| `AWS_DEPLOY_ROLE_ARN` | Output `github_deploy_role_arn` |
+| `K3S_MASTER_INSTANCE_ID` | Output `master_instance_id` |
+| `DEPLOY_ENABLED` | `true`, somente após a infraestrutura e o primeiro deploy estarem prontos |
+
+Não são secrets de credenciais: o login usa um token OIDC temporário. A pipeline ainda depende das configurações de build, publicação das imagens e verificações já existentes no repositório. Quem não tem permissão de escrita/administração precisa solicitar essa configuração ao responsável pelo projeto. Se o master for recriado, atualize `K3S_MASTER_INSTANCE_ID` com o novo output.
+
+**4. Validar a integração:** após um merge na `main` com os jobs anteriores aprovados, conferir no Actions o job Deploy e seu comando SSM. O job deve assumir a role, executar `kubectl set image` com `latest`, reiniciar os deployments backend/frontend e acompanhar os rollouts. Este teste precisa da infraestrutura provisionada; os testes locais simulados não comprovam autenticação real no GitHub/AWS.
+
+A role permite somente `ssm:SendCommand` para o ARN do master e para o documento AWS `AWS-RunShellScript`, além de `ssm:GetCommandInvocation` com `Resource = "*"`, exigido por essa ação sem suporte a ARN. Não concede administração de EC2, IAM, RDS, S3 ou acesso direto aos parâmetros. O documento permite executar shell no master; por isso a confiança no repositório e a proteção do environment são parte da configuração do deploy.
+
+Uma execução posterior do deploy inicial pelo Terraform pode reaplicar as imagens declaradas no tfvars. Mantenha `backend_image` e `frontend_image` coerentes com a versão desejada antes de aplicar mudanças que reexecutem esse passo. A pipeline muda as imagens em execução, mas não edita seu tfvars local.
+
+Referências: [OIDC AWS no GitHub Actions](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws), [permissões SSM](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ssm.html).
+
+## 8. Proteção, recuperação e remoção do laboratório
+
+O banco novo usa PostgreSQL privado, backups automáticos com retenção de **7 dias**, proteção contra exclusão e snapshot final habilitados. No seu `terraform.tfvars` final, atualize também os valores antigos: valores explícitos prevalecem sobre os defaults do código.
+
+```hcl
+db_backup_retention_days = 7
+db_final_snapshot = true
+db_deletion_protection = true
+db_final_snapshot_identifier = null
+```
+
+`db_deletion_protection` e `db_final_snapshot_identifier` são parâmetros novos. Com `null`, o nome do snapshot final será `<project_name>-final-<sufixo aleatório>`. Você pode informar um nome próprio válido e ainda não utilizado no RDS. Se um snapshot com o mesmo nome já existir, escolha outro nome antes de remover o banco, preservando o snapshot anterior. O `backend.hcl` não muda nesta entrega.
+
+### Recuperar dados
+
+Recriar a infraestrutura e executar o schema inicializa um banco novo; **não restaura os dados anteriores**. Para recuperar dados, no console RDS da mesma região selecione o snapshot manual/final e escolha **Restore snapshot**, ou selecione o banco e use **Restore to point in time** dentro da janela disponível de backups automáticos. A restauração cria outra instância, com outro endpoint: selecione a VPC, o subnet group e o security group privados deste projeto e mantenha acesso público desabilitado.
+
+Antes de conectar a aplicação ao banco restaurado, confira os dados e reconcilie a instância restaurada com o recurso Terraform (configuração e importação), as credenciais no SSM e o `DATABASE_URL` do Secret da aplicação. Essa integração exige um plano de recuperação específico; não basta executar o apply atual, que não recebe um snapshot de origem. A E4 prepara a preservação dos dados e documenta a recuperação manual, sem automatizar a restauração ou comprovar um tempo de recuperação.
+
+Os backups automáticos protegem a janela configurada enquanto o banco existe. Esta configuração mantem o comportamento padrão de excluir os backups automáticos ao remover a instância; o snapshot final é a cópia preservada após essa remoção. Snapshots finais persistem até sua exclusão manual e podem gerar custos de armazenamento. Guarde também o estado Terraform e as credenciais necessárias a recuperação em local seguro.
+
+### Remover o laboratório
+
+A remoção exige duas etapas. Primeiro, altere **somente** `db_deletion_protection = false` no seu tfvars, mantenha `db_final_snapshot = true` e aplique essa mudança no banco existente:
+
+```powershell
+terraform plan -out=desproteger.tfplan
+terraform apply desproteger.tfplan
+```
+
+Confira que o plano desativa a proteção no RDS. Somente após concluir esse apply, gere e revise o plano de remoção:
 
 ```powershell
 terraform plan -destroy -out=destroy.tfplan
 terraform apply destroy.tfplan
 ```
 
-Por padrão, o RDS é removido **sem snapshot final**. Configure `db_final_snapshot = true` antes se precisar preservá-lo. Um bucket de imagens não vazio impede sua exclusão; `images_force_destroy = true` permite remover também os objetos. O bucket de estado permanece. NAT, ALB, EC2, RDS, WAF e armazenamento geram custos enquanto existirem.
+Passar a variável apenas ao comando de destroy não altera previamente a proteção existente na AWS. Após a remoção, confira no RDS que o snapshot final está disponível. Antes de provisionar um novo laboratório, restaure `db_deletion_protection = true` no tfvars.
+
+Um bucket de imagens não vazio impede sua exclusão; `images_force_destroy = true` permite remover também os objetos. O bucket de estado permanece. NAT, ALB, EC2, RDS, WAF e armazenamento geram custos enquanto existirem.
+
+Referencias: [exclusão e snapshot final do RDS](https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_DeleteDBInstance.html), [restaurar um snapshot](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_RestoreFromSnapshot.html).
 
 ## Versionamento em infra/terraform
 
@@ -280,3 +446,12 @@ git rm --cached -- infra/terraform/infra.tfplan
 Substitua o caminho pelo plano que estiver rastreado. Versione código, exemplos e `.terraform.lock.hcl` dos providers; esse lockfile não é um plano. Guarde configurações reais, estados e planos fora do Git.
 
 Para conferir o código sem provisionar, use `terraform validate` e `terraform test` após inicializar os providers. Os testes são simulados e não substituem a validação real da aplicação na AWS.
+
+
+## Preparacao do CI antes do provisionamento
+
+PRs vindos de fork nao recebem os secrets do repositorio original. O job SonarQube continua exigindo seus secrets e nao pula o Quality Gate. Para executar a validacao completa das alteracoes confiaveis, use uma branch e PR internos no repositorio original. Nao exponha secrets a codigo de forks.
+
+O job de infraestrutura usa Terraform 1.17.2 e executa `fmt`, `init -backend=false`, `validate` e `test` com providers simulados. O SonarQube inclui `infra/terraform` no escopo e normaliza quebras de linha da variavel `SONAR_ORGANIZATION`.
+
+Antes de aplicar, use a versao revisada desta pasta, atualize seu tfvars real e confira o bucket do backend apos a limpeza dos recursos antigos. Gere um plano novo; nao reutilize planos anteriores. Mantenha `DEPLOY_ENABLED=false` ate concluir o primeiro deploy, conferir os outputs AWS e preencher as variaveis Actions.
