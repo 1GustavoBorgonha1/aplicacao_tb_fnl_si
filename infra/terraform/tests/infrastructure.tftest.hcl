@@ -94,15 +94,21 @@ run "real_postgresql_schema" {
     error_message = "Schema real deve incluir a terceira migration e ser publicado com hash correto."
   }
 }
-run "reject_latest_backend" {
+run "accept_latest_backend" {
   command = plan
   variables { backend_image = "example/backend:latest" }
-  expect_failures = [var.backend_image]
+  assert {
+    condition     = local.backend_deployment.spec.template.spec.containers[0].image == "example/backend:latest" && local.backend_deployment.spec.template.spec.containers[0].imagePullPolicy == "Always"
+    error_message = "Latest deve ser aceito e usar Always no manifest renderizado."
+  }
 }
-run "reject_latest_frontend" {
+run "accept_latest_frontend" {
   command = plan
   variables { frontend_image = "example/frontend:latest" }
-  expect_failures = [var.frontend_image]
+  assert {
+    condition     = local.frontend_deployment.spec.template.spec.containers[0].image == "example/frontend:latest" && local.frontend_deployment.spec.template.spec.containers[0].imagePullPolicy == "Always"
+    error_message = "Latest deve ser aceito e usar Always no manifest renderizado."
+  }
 }
 run "reject_missing_schema" {
   command = plan
@@ -430,4 +436,26 @@ run "rds_reject_invalid_backup_retention" {
   command = plan
   variables { db_backup_retention_days = 0 }
   expect_failures = [var.db_backup_retention_days]
+}
+
+run "default_application_images_use_latest" {
+  command = plan
+  variables {
+    backend_image  = "gustavoborgonha/marmifit-backend:latest"
+    frontend_image = "gustavoborgonha/marmifit-frontend:latest"
+  }
+  assert {
+    condition     = local.backend_deployment.spec.template.spec.containers[0].image == "gustavoborgonha/marmifit-backend:latest" && local.frontend_deployment.spec.template.spec.containers[0].image == "gustavoborgonha/marmifit-frontend:latest" && local.backend_deployment.spec.template.spec.containers[0].imagePullPolicy == "Always" && local.frontend_deployment.spec.template.spec.containers[0].imagePullPolicy == "Always"
+    error_message = "As imagens oficiais devem preservar latest e Always em ambos os deployments."
+  }
+}
+run "reject_missing_tag_backend" {
+  command = plan
+  variables { backend_image = "example/backend" }
+  expect_failures = [var.backend_image]
+}
+run "reject_missing_tag_frontend" {
+  command = plan
+  variables { frontend_image = "example/frontend" }
+  expect_failures = [var.frontend_image]
 }

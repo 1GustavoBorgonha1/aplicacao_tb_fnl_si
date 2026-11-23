@@ -3,8 +3,8 @@ aws_profile = "projeto-aula"
 project_name = "marmifit"
 state_bucket_name = "SUBSTITUA-pelo-bucket-ja-criado-no-bootstrap"
 
-backend_image = "gustavoborgonha/marmifit-backend:10a771b00532caff63ee1d94218bafaea9636f3b"
-frontend_image = "gustavoborgonha/marmifit-frontend:10a771b00532caff63ee1d94218bafaea9636f3b"
+backend_image = "gustavoborgonha/marmifit-backend:latest"
+frontend_image = "gustavoborgonha/marmifit-frontend:latest"
 backend_replicas = 2
 frontend_replicas = 2
 admin_email = "admin@marmifit.local"

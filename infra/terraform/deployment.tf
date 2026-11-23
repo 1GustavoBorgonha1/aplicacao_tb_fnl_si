@@ -43,7 +43,7 @@ locals {
         spec = merge(local.base_backend[0].spec.template.spec, {
           nodeSelector = { workload = "application" }
           containers = [merge(local.base_backend[0].spec.template.spec.containers[0], {
-            image = var.backend_image, imagePullPolicy = "IfNotPresent"
+            image = var.backend_image, imagePullPolicy = local.base_backend[0].spec.template.spec.containers[0].imagePullPolicy
           })]
         })
       })
@@ -57,7 +57,7 @@ locals {
         spec = merge(local.base_frontend[0].spec.template.spec, {
           nodeSelector = { workload = "application" }
           containers = [merge(local.base_frontend[0].spec.template.spec.containers[0], {
-            image = var.frontend_image, imagePullPolicy = "IfNotPresent"
+            image = var.frontend_image, imagePullPolicy = local.base_frontend[0].spec.template.spec.containers[0].imagePullPolicy
           })]
         })
       })

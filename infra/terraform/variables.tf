@@ -53,12 +53,12 @@ variable "k3s_version" {
   default = "v1.34.1+k3s1"
 }
 variable "backend_image" {
-  description = "Imagem publica Linux amd64, com tag de versao ou digest."
+  description = "Imagem publica Linux amd64, com tag (latest por padrao) ou digest."
   type        = string
-  default     = "gustavoborgonha/marmifit-backend:10a771b00532caff63ee1d94218bafaea9636f3b"
+  default     = "gustavoborgonha/marmifit-backend:latest"
   validation {
-    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9._/:@+-]*(:[A-Za-z0-9_][A-Za-z0-9_.-]*|@sha256:[a-f0-9]{64})$", var.backend_image)) && !endswith(var.backend_image, ":latest")
-    error_message = "Informe imagem com tag explicita (exceto latest) ou digest sha256."
+    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9._/:@+-]*(:[A-Za-z0-9_][A-Za-z0-9_.-]*|@sha256:[a-f0-9]{64})$", var.backend_image))
+    error_message = "Informe imagem com tag explicita (incluindo latest) ou digest sha256."
   }
 }
 variable "backend_replicas" {
@@ -70,12 +70,12 @@ variable "backend_replicas" {
   }
 }
 variable "frontend_image" {
-  description = "Imagem publica Linux amd64, com tag de versao ou digest."
+  description = "Imagem publica Linux amd64, com tag (latest por padrao) ou digest."
   type        = string
-  default     = "gustavoborgonha/marmifit-frontend:10a771b00532caff63ee1d94218bafaea9636f3b"
+  default     = "gustavoborgonha/marmifit-frontend:latest"
   validation {
-    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9._/:@+-]*(:[A-Za-z0-9_][A-Za-z0-9_.-]*|@sha256:[a-f0-9]{64})$", var.frontend_image)) && !endswith(var.frontend_image, ":latest")
-    error_message = "Informe imagem com tag explicita (exceto latest) ou digest sha256."
+    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9._/:@+-]*(:[A-Za-z0-9_][A-Za-z0-9_.-]*|@sha256:[a-f0-9]{64})$", var.frontend_image))
+    error_message = "Informe imagem com tag explicita (incluindo latest) ou digest sha256."
   }
 }
 variable "frontend_replicas" {

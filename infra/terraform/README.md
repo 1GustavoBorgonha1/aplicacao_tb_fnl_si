@@ -176,11 +176,11 @@ Use **o mesmo bucket** no backend e no tfvars; o backend não lê essas variáve
 As imagens configuradas são:
 
 ```hcl
-backend_image  = "gustavoborgonha/marmifit-backend:10a771b00532caff63ee1d94218bafaea9636f3b"
-frontend_image = "gustavoborgonha/marmifit-frontend:10a771b00532caff63ee1d94218bafaea9636f3b"
+backend_image  = "gustavoborgonha/marmifit-backend:latest"
+frontend_image = "gustavoborgonha/marmifit-frontend:latest"
 ```
 
-Use tags de versão ou digest, sem `latest`. `backend_environment = {}` também é válido: o log padrão da aplicação é `info`. Esse mapa aceita apenas configurações não sensíveis; conexão, segredos, TLS e dados do S3 são fornecidos pelo Terraform.
+O padrão usa `latest` para backend e frontend; tags de versão ou digest também são aceitos. `backend_environment = {}` também é válido: o log padrão da aplicação é `info`. Esse mapa aceita apenas configurações não sensíveis; conexão, segredos, TLS e dados do S3 são fornecidos pelo Terraform.
 
 ## 5. Provisionar e fazer o deploy
 
@@ -257,14 +257,33 @@ Não publique senhas, tokens, plans ou estados: o estado Terraform contém segre
 
 ## 7. Atualizar a aplicação
 
-Altere `backend_image`, `frontend_image` ou ambas no tfvars para imagens já publicadas:
+O padrão usa as imagens `gustavoborgonha/marmifit-backend:latest` e `gustavoborgonha/marmifit-frontend:latest`. Atualize essas duas referências no seu `terraform.tfvars` final se ele ainda contiver o SHA antigo. Não há variáveis novas nesta entrega.
+
+Os containers usam `imagePullPolicy: Always`: a cada início, o Kubernetes consulta o registro para resolver a imagem atual da tag. Publicar outra imagem com `latest` não reinicia pods em execução; um plan/apply com as mesmas referências também não detecta a mudança do conteúdo no registro.
+
+Depois de confirmar a publicação das duas imagens, abra uma sessão no master em **Systems Manager -> Session Manager** e execute (substitua `marmifit` se usar outro `project_name`):
+
+```bash
+sudo k3s kubectl rollout restart deployment/backend deployment/frontend -n marmifit
+sudo k3s kubectl rollout status deployment/backend -n marmifit --timeout=600s
+sudo k3s kubectl rollout status deployment/frontend -n marmifit --timeout=600s
+sudo k3s kubectl get pods -n marmifit -o wide
+```
+
+Esse procedimento recria gradualmente os pods e busca a versão apontada por `latest`, sem recriar EC2/RDS. A tag é mutável: registre os digests efetivamente utilizados se precisar identificar a versão executada. Republicar `latest` elimina a referência anterior dessa tag; `rollout undo` sozinho não garante recuperar a imagem anterior. Para voltar de versão, use uma tag ou digest anterior ainda disponível; migrations e dados do banco não são desfeitos por esse procedimento.
+
+Se precisar mudar o registro, tag ou digest declarado, altere `backend_image` e/ou `frontend_image` no tfvars e aplique um plano novo:
 
 ```powershell
 terraform plan -out=update.tfplan
 terraform apply update.tfplan
 ```
 
-O SSM atualiza os Deployments e aguarda o rollout. Uma troca somente de imagem não recria EC2/RDS. Para voltar de versão, restaure a referência anterior e aplique outro plano; isso não desfaz migrations ou dados do banco.
+O SSM aplica os Deployments e acompanha o rollout. Se o conteúdo de `latest` mudou sem mudar a referência declarada, use o reinício acima.
+
+**Pipeline:** o job existente usa tags de SHA em `kubectl set image`. Para manter `latest` após cada merge, o responsável pelo workflow deve publicar as duas tags `latest`, esperar a publicação terminar, configurar os Deployments com essas referências e executar `kubectl rollout restart` seguido de `kubectl rollout status`. Apenas repetir `set image` com a mesma tag não inicia um novo rollout. Esse ajuste do workflow fica fora desta entrega, restrita a `infra/terraform`; enquanto ele usar SHA, seus deploys podem substituir `latest`. A pipeline continua sem executar Terraform.
+
+Referencia: [politica de download de imagens do Kubernetes](https://kubernetes.io/docs/concepts/containers/images/#image-pull-policy).
 
 Para diagnóstico, consulte **Systems Manager → Run Command**. No master, via SSM:
 

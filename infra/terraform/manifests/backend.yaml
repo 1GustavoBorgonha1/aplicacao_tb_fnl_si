@@ -31,7 +31,8 @@ spec:
           labelSelector: { matchLabels: { app: backend } }
       containers:
         - name: backend
-          image: marmifit-backend # tag/registro definidos no overlay (kustomize "images")
+          image: marmifit-backend # Registro e tag definidos pelo Terraform.
+          imagePullPolicy: Always
           ports:
             - { name: http, containerPort: 3000 }
           envFrom:
