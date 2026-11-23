@@ -151,6 +151,63 @@ resource "aws_wafv2_web_acl" "app" {
       sampled_requests_enabled   = true
     }
   }
+  # SQL injection (login, cadastro, filtros e demais JSON da API). Os uploads multipart das fotos
+  # ficam fora do escopo: os bytes da imagem gerariam falso positivo, e o backend ja valida o
+  # arquivo por magic bytes. A regra Common continua inspecionando os uploads.
+  rule {
+    name     = "SQLiRules"
+    priority = 4
+    override_action {
+      none {}
+    }
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesSQLiRuleSet"
+        vendor_name = "AWS"
+        scope_down_statement {
+          not_statement {
+            statement {
+              byte_match_statement {
+                search_string         = "multipart/form-data"
+                positional_constraint = "STARTS_WITH"
+                field_to_match {
+                  single_header { name = "content-type" }
+                }
+                text_transformation {
+                  priority = 0
+                  type     = "LOWERCASE"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.project_name}-sqli"
+      sampled_requests_enabled   = true
+    }
+  }
+  # Entradas sabidamente maliciosas (ex.: Log4Shell, path traversal em cabecalhos).
+  rule {
+    name     = "KnownBadInputs"
+    priority = 5
+    override_action {
+      none {}
+    }
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesKnownBadInputsRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.project_name}-bad-inputs"
+      sampled_requests_enabled   = true
+    }
+  }
   visibility_config {
     cloudwatch_metrics_enabled = true
     metric_name                = "${var.project_name}-waf"

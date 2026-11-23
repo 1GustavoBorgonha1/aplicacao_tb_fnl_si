@@ -80,6 +80,13 @@ run "upload_exception_preserves_waf" {
     error_message = "A excecao de tamanho deve depender da rota e multipart, mantendo o bloqueio e rate limit."
   }
 }
+run "waf_blocks_sqli_and_known_bad_inputs" {
+  command = plan
+  assert {
+    condition     = strcontains(jsonencode(aws_wafv2_web_acl.app.rule), "AWSManagedRulesSQLiRuleSet") && strcontains(jsonencode(aws_wafv2_web_acl.app.rule), "AWSManagedRulesKnownBadInputsRuleSet") && one([for rule in aws_wafv2_web_acl.app.rule : rule if rule.name == "SQLiRules"]).priority == 4 && one([for rule in aws_wafv2_web_acl.app.rule : rule if rule.name == "KnownBadInputs"]).priority == 5
+    error_message = "O WAF deve aplicar as regras gerenciadas de SQL injection e de entradas maliciosas."
+  }
+}
 run "real_postgresql_schema" {
   command = plan
   variables { db_schema_file = "schema.sql" }
