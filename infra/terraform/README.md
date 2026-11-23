@@ -28,7 +28,29 @@ Internet → ALB HTTP/80 com WAF → workers:30080 → frontend Nginx:8080
 
 Master, workers e RDS ficam na primeira zona. A segunda atende aos requisitos do ALB e do grupo de subnets do RDS. É um laboratório com master, NAT e banco únicos. O acesso é por HTTP no DNS do ALB; as imagens são lidas diretamente do S3 por HTTPS.
 
-O WAF possui regras gerenciadas e limite por IP, com tratamento de tamanho para permitir os uploads da aplicação. Os manifests mantêm containers sem root, NetworkPolicies e limites de recursos. O frontend não recebe os segredos do backend.
+O WAF possui Common Rule Set, SQLi Rule Set, Known Bad Inputs e limite por IP, com tratamento de tamanho para permitir os uploads da aplicação. Os manifests mantêm containers sem root, NetworkPolicies e limites de recursos. O frontend não recebe os segredos do backend.
+
+### Proteções do WAF
+
+A Web ACL regional continua associada ao ALB, com as seguintes prioridades:
+
+| Prioridade | Regra | Função |
+|---|---|---|
+| 1 | `AWSManagedRulesCommonRuleSet` | Proteções comuns de aplicações web |
+| 2 | `BlockLargeBodiesOutsideUploads` | Preserva o bloqueio de corpos grandes fora das rotas de upload previstas |
+| 3 | `RateLimit` | Limite de requisições por IP |
+| 4 | `AWSManagedRulesSQLiRuleSet` | Inspeção de padrões de SQL injection |
+| 5 | `AWSManagedRulesKnownBadInputsRuleSet` | Inspeção de entradas associadas à exploração de vulnerabilidades |
+
+Os grupos usam `vendor_name = "AWS"` e `override_action = none`, preservando as ações definidas pela AWS para suas regras. Isso não coloca os grupos inteiros em Count nem força Block em regras que a AWS definiu como Count. A exceção de upload continua limitada ao tamanho do corpo no Common Rule Set; os novos grupos também inspecionam essas rotas, sem exclusões gerais. No ALB, a inspeção do corpo pelo WAF é limitada aos primeiros 8 KiB; ela não valida o conteúdo completo de uma foto. A aplicação mantém a validação do tipo e tamanho da imagem.
+
+Cada regra possui métricas próprias no CloudWatch e amostragem de requisições. Após provisionar, consulte **WAF & Shield → Web ACLs → marmifit-waf**, escolhendo a região do ambiente e o nome real do projeto. Examine métricas e requisições amostradas ao investigar respostas 403. Esta entrega não cria um destino de logs completos do WAF.
+
+A validação local confirma a configuração das regras, não a detecção de ataques reais. Após um provisionamento autorizado, valide login, cadastro e upload legítimos e faça testes controlados de SQL injection no próprio laboratório, conferindo no WAF qual regra correspondeu à requisição. Não basta observar um HTTP 403, pois a aplicação também pode negar o acesso. Caso uma requisição legítima seja bloqueada, investigue a regra específica antes de propor uma exceção.
+
+Essas proteções complementam as consultas parametrizadas e validações do backend. Não há novo parâmetro obrigatório em `terraform.tfvars` ou `backend.hcl`.
+
+Referências: [grupo SQLi](https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-use-case.html), [grupos Common e Known Bad Inputs](https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html).
 
 ### Workers e recuperação automática
 

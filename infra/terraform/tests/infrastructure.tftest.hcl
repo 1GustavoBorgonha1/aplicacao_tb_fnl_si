@@ -205,3 +205,37 @@ run "reject_fractional_worker_grace_period" {
   variables { worker_health_check_grace_period = 1.5 }
   expect_failures = [var.worker_health_check_grace_period]
 }
+
+run "waf_managed_attack_groups_keep_aws_actions" {
+  command = plan
+  assert {
+    condition     = one(one(one([for rule in aws_wafv2_web_acl.app.rule : rule if rule.name == "SQLInjectionRules"]).statement).managed_rule_group_statement).name == "AWSManagedRulesSQLiRuleSet" && one(one(one([for rule in aws_wafv2_web_acl.app.rule : rule if rule.name == "KnownBadInputsRules"]).statement).managed_rule_group_statement).name == "AWSManagedRulesKnownBadInputsRuleSet"
+    error_message = "WAF deve incluir os grupos gerenciados de SQL injection e Known Bad Inputs."
+  }
+  assert {
+    condition     = alltrue([for rule in aws_wafv2_web_acl.app.rule : one(one(rule.statement).managed_rule_group_statement).vendor_name == "AWS" && length(one(rule.override_action).none) == 1 && length(one(rule.override_action).count) == 0 && length(one(one(rule.statement).managed_rule_group_statement).rule_action_override) == 0 if contains(["SQLInjectionRules", "KnownBadInputsRules"], rule.name)])
+    error_message = "Os novos grupos devem preservar as acoes da AWS, sem overrides de regras ou Count global."
+  }
+}
+run "waf_rules_have_unique_priorities_and_metrics" {
+  command = plan
+  assert {
+    condition     = length(aws_wafv2_web_acl.app.rule) == 5 && toset([for rule in aws_wafv2_web_acl.app.rule : rule.priority]) == toset([1, 2, 3, 4, 5]) && one([for rule in aws_wafv2_web_acl.app.rule : rule if rule.name == "SQLInjectionRules"]).priority == 4 && one([for rule in aws_wafv2_web_acl.app.rule : rule if rule.name == "KnownBadInputsRules"]).priority == 5
+    error_message = "As regras devem manter prioridades existentes e acrescentar SQLi/Known Bad Inputs em 4 e 5."
+  }
+  assert {
+    condition     = alltrue([for rule in aws_wafv2_web_acl.app.rule : one(rule.visibility_config).cloudwatch_metrics_enabled && one(rule.visibility_config).sampled_requests_enabled]) && length(distinct([for rule in aws_wafv2_web_acl.app.rule : one(rule.visibility_config).metric_name])) == 5
+    error_message = "Cada regra deve ter metrica propria e amostragem de requisicoes habilitada."
+  }
+}
+run "upload_size_exception_does_not_bypass_attack_groups" {
+  command = plan
+  assert {
+    condition     = alltrue([for rule in aws_wafv2_web_acl.app.rule : length(one(one(rule.statement).managed_rule_group_statement).scope_down_statement) == 0 if contains(["SQLInjectionRules", "KnownBadInputsRules"], rule.name)])
+    error_message = "Rotas de upload tambem devem ser inspecionadas pelos novos grupos, sem exclusao de escopo."
+  }
+  assert {
+    condition     = one(one(one(one([for rule in aws_wafv2_web_acl.app.rule : rule if rule.name == "CommonRules"]).statement).managed_rule_group_statement).rule_action_override).name == "SizeRestrictions_BODY" && length(one(one(one(one([for rule in aws_wafv2_web_acl.app.rule : rule if rule.name == "CommonRules"]).statement).managed_rule_group_statement).rule_action_override).action_to_use[0].count) == 1
+    error_message = "A excecao existente deve continuar limitada a regra de tamanho do Common Rule Set."
+  }
+}

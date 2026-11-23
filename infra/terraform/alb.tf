@@ -146,6 +146,43 @@ resource "aws_wafv2_web_acl" "app" {
       sampled_requests_enabled   = true
     }
   }
+  rule {
+    name     = "SQLInjectionRules"
+    priority = 4
+    # Preservar as acoes nativas do grupo gerenciado, sem modo Count global.
+    override_action {
+      none {}
+    }
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesSQLiRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.project_name}-sqli"
+      sampled_requests_enabled   = true
+    }
+  }
+  rule {
+    name     = "KnownBadInputsRules"
+    priority = 5
+    override_action {
+      none {}
+    }
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesKnownBadInputsRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.project_name}-known-bad-inputs"
+      sampled_requests_enabled   = true
+    }
+  }
   visibility_config {
     cloudwatch_metrics_enabled = true
     metric_name                = "${var.project_name}-waf"
