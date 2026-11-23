@@ -31,6 +31,12 @@ Master, workers e RDS ficam na primeira zona. A segunda atende aos requisitos do
 
 O WAF possui Common Rule Set, SQLi Rule Set, Known Bad Inputs e limite por IP, com tratamento de tamanho para permitir os uploads da aplicação. Os manifests mantêm containers sem root, NetworkPolicies e limites de recursos. O frontend não recebe os segredos do backend.
 
+### Fontes oficiais da AWS
+
+Os manifests usados na AWS ficam em [manifests/](manifests/README.md) e o schema de inicialização fica em [schema.sql](schema.sql), documentado em [sql/README.md](sql/README.md). O Terraform utiliza esses arquivos locais; `k8s/overlays/aws` e `infra/database` já foram removidos do projeto e não devem ser recriados como cópias.
+
+`k8s/base` continua atendendo aos testes e ambientes locais. Mudanças de segurança nos manifests da AWS (`securityContext`, NetworkPolicy e limites de recursos) devem ser comunicadas ao responsável pela aplicação para avaliação e sincronização da base local. Não existe sincronização automática. Ao evoluir as migrations do backend, revise também o schema consolidado destinado a bancos novos; bancos já inicializados recebem as migrations pela aplicação.
+
 ### Proteções do WAF
 
 A Web ACL regional continua associada ao ALB, com as seguintes prioridades:
