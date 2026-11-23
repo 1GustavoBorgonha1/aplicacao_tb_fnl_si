@@ -32,6 +32,8 @@ images_force_destroy = false
 
 # OIDC para o job de deploy existente, sem access keys no GitHub.
 github_repository = "1GustavoBorgonha1/aplicacao_tb_fnl_si"
+# IDs da API GitHub; mantenha coerentes com o repositorio acima.
+github_repository_ids = { owner_id = "176631057", repository_id = "1462042647" }
 github_environment = "production"
 # Null cria o provider; se ja existir na conta, informe seu ARN aqui.
 github_oidc_provider_arn = null

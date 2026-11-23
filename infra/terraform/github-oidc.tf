@@ -3,8 +3,13 @@ data "aws_caller_identity" "current" {}
 
 locals {
   github_oidc_host = "token.actions.githubusercontent.com"
+  github_oidc_repository = var.github_repository_ids == null ? var.github_repository : format(
+    "%s@%s/%s@%s",
+    split("/", var.github_repository)[0], var.github_repository_ids.owner_id,
+    split("/", var.github_repository)[1], var.github_repository_ids.repository_id
+  )
   # GitHub codifica ':' em nomes de environments no subject do token.
-  github_oidc_subject      = "repo:${var.github_repository}:environment:${replace(var.github_environment, ":", "%3A")}"
+  github_oidc_subject      = "repo:${local.github_oidc_repository}:environment:${replace(var.github_environment, ":", "%3A")}"
   github_oidc_provider_arn = var.github_oidc_provider_arn == null ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github_existing[0].arn
 }
 

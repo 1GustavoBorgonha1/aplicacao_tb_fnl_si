@@ -264,7 +264,7 @@ run "github_oidc_creates_provider_and_restricts_trust" {
     error_message = "Por padrao o provider deve ser criado para GitHub e audience STS."
   }
   assert {
-    condition     = length(jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement) == 1 && jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Action == "sts:AssumeRoleWithWebIdentity" && jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Principal.Federated == aws_iam_openid_connect_provider.github[0].arn && jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Condition.StringEquals == { "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com", "token.actions.githubusercontent.com:sub" = "repo:1GustavoBorgonha1/aplicacao_tb_fnl_si:environment:production" }
+    condition     = length(jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement) == 1 && jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Action == "sts:AssumeRoleWithWebIdentity" && jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Principal.Federated == aws_iam_openid_connect_provider.github[0].arn && jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Condition.StringEquals == { "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com", "token.actions.githubusercontent.com:sub" = "repo:1GustavoBorgonha1@176631057/aplicacao_tb_fnl_si@1462042647:environment:production" }
     error_message = "A confianca deve exigir emissor, audience e subject exatos do repositorio/environment."
   }
 }
@@ -343,8 +343,9 @@ run "github_oidc_rejects_existing_wrong_issuer" {
 run "github_oidc_custom_repository_and_environment" {
   command = plan
   variables {
-    github_repository  = "owner-test/project-test"
-    github_environment = "production:restricted"
+    github_repository     = "owner-test/project-test"
+    github_repository_ids = null
+    github_environment    = "production:restricted"
   }
   assert {
     condition     = local.github_oidc_subject == "repo:owner-test/project-test:environment:production%3Arestricted"
@@ -458,4 +459,32 @@ run "reject_missing_tag_frontend" {
   command = plan
   variables { frontend_image = "example/frontend" }
   expect_failures = [var.frontend_image]
+}
+
+run "github_oidc_custom_immutable_ids" {
+  command = plan
+  override_resource {
+    override_during = plan
+    target          = aws_iam_openid_connect_provider.github[0]
+    values          = { arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com" }
+  }
+  variables {
+    github_repository     = "owner-test/project-test"
+    github_repository_ids = { owner_id = "123", repository_id = "456" }
+    github_environment    = "production:restricted"
+  }
+  assert {
+    condition     = jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:owner-test@123/project-test@456:environment:production%3Arestricted"
+    error_message = "A confianca deve combinar nomes, IDs imutaveis e environment exatos."
+  }
+}
+run "github_oidc_rejects_invalid_owner_id" {
+  command = plan
+  variables { github_repository_ids = { owner_id = "*", repository_id = "456" } }
+  expect_failures = [var.github_repository_ids]
+}
+run "github_oidc_rejects_invalid_repository_id" {
+  command = plan
+  variables { github_repository_ids = { owner_id = "123", repository_id = "0" } }
+  expect_failures = [var.github_repository_ids]
 }

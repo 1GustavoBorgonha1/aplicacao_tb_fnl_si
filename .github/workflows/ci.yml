@@ -148,6 +148,8 @@ jobs:
 
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         if: steps.tf.outputs.existe == 'true'
+        with:
+          terraform_version: 1.17.2
 
       - name: Terraform — fmt e validate
         if: steps.tf.outputs.existe == 'true'
@@ -156,6 +158,11 @@ jobs:
           terraform fmt -check -recursive
           terraform init -backend=false -input=false
           terraform validate
+
+      - name: Terraform - testes simulados (sem AWS)
+        if: steps.tf.outputs.existe == 'true'
+        working-directory: infra/terraform
+        run: terraform test -no-color
 
   sonarqube:
     name: SonarQube (SAST + Quality Gate)
@@ -172,14 +179,22 @@ jobs:
           path: .
 
       - name: Verificar configuração
+        id: sonar_config
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
         run: |
           if [ -z "$SONAR_TOKEN" ] || [ -z "$SONAR_HOST_URL" ]; then
             echo "::error::Configure os secrets SONAR_TOKEN e SONAR_HOST_URL (veja README → SonarQube)."
             exit 1
           fi
+          organization=$(printf '%s' "$SONAR_ORGANIZATION" | tr -d '\r\n')
+          if [ -n "$organization" ] && ! [[ "$organization" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::SONAR_ORGANIZATION deve conter apenas a chave da organizacao, sem espacos."
+            exit 1
+          fi
+          printf 'organization=%s\n' "$organization" >> "$GITHUB_OUTPUT"
 
       # qualitygate.wait=true faz o job FALHAR se o Quality Gate for reprovado → bloqueia build/deploy.
       - name: Análise SonarQube
@@ -191,7 +206,7 @@ jobs:
           args: >
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
-            ${{ vars.SONAR_ORGANIZATION && format('-Dsonar.organization={0}', vars.SONAR_ORGANIZATION) || '' }}
+            ${{ steps.sonar_config.outputs.organization && format('-Dsonar.organization={0}', steps.sonar_config.outputs.organization) || '' }}
 
   dast:
     name: DAST (OWASP ZAP)
@@ -260,6 +275,7 @@ jobs:
   deploy:
     name: Deploy no K3s (AWS)
     needs: build
+    timeout-minutes: 40
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     # Environment "production" permite exigir aprovação manual (Settings → Environments).
@@ -278,22 +294,24 @@ jobs:
       - name: kubectl set image (rollout) via SSM
         env:
           INSTANCE_ID: ${{ vars.K3S_MASTER_INSTANCE_ID }}
-          TAG: ${{ github.sha }}
+          TAG: latest
+          DEPLOY_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
-          SCRIPT="k3s kubectl -n marmifit set image deployment/backend backend=${IMAGE_BACKEND}:${TAG} && \
+          SCRIPT="set -eu; k3s kubectl -n marmifit set image deployment/backend backend=${IMAGE_BACKEND}:${TAG} && \
           k3s kubectl -n marmifit set image deployment/frontend frontend=${IMAGE_FRONTEND}:${TAG} && \
-          k3s kubectl -n marmifit rollout status deployment/backend --timeout=180s && \
-          k3s kubectl -n marmifit rollout status deployment/frontend --timeout=180s"
+          k3s kubectl -n marmifit rollout restart deployment/backend deployment/frontend && \
+          k3s kubectl -n marmifit rollout status deployment/backend --timeout=600s && \
+          k3s kubectl -n marmifit rollout status deployment/frontend --timeout=600s"
           CMD_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript \
-            --comment "MarmiFit deploy ${TAG}" \
-            --parameters "commands=[\"$SCRIPT\"]" \
+            --comment "MarmiFit deploy ${DEPLOY_COMMIT} (${TAG})" \
+            --parameters "$(jq -cn --arg script "$SCRIPT" '{commands: [$script], executionTimeout: ["1500"]}')" \
             --query Command.CommandId --output text)
           echo "Comando SSM: $CMD_ID"
-          # Espera até 8 min (o rollout dos dois deployments pode levar alguns minutos).
-          for i in $(seq 1 48); do
+          # Aguarda ate 30 min, incluindo os dois rollouts e a entrega SSM.
+          for i in $(seq 1 180); do
             sleep 10
             STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
               --query Status --output text 2>/dev/null || echo Pending)

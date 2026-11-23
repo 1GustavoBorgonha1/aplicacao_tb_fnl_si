@@ -287,7 +287,7 @@ terraform apply update.tfplan
 
 O SSM aplica os Deployments e acompanha o rollout. Se o conteúdo de `latest` mudou sem mudar a referência declarada, use o reinício acima.
 
-**Pipeline:** o job existente usa tags de SHA em `kubectl set image`. Para manter `latest` após cada merge, o responsável pelo workflow deve publicar as duas tags `latest`, esperar a publicação terminar, configurar os Deployments com essas referências e executar `kubectl rollout restart` seguido de `kubectl rollout status`. Apenas repetir `set image` com a mesma tag não inicia um novo rollout. Esse ajuste do workflow fica fora desta entrega, restrita a `infra/terraform`; enquanto ele usar SHA, seus deploys podem substituir `latest`. A pipeline continua sem executar Terraform.
+**Pipeline:** o build publica tags SHA e `latest`. O deploy usa `latest`, executa `kubectl rollout restart` e acompanha os rollouts via SSM. Publicacao e verificacoes precisam terminar com sucesso antes do deploy. Esse job depende de `DEPLOY_ENABLED=true` e do environment `production` corretamente configurado. A pipeline nao executa Terraform.
 
 Referencia: [politica de download de imagens do Kubernetes](https://kubernetes.io/docs/concepts/containers/images/#image-pull-policy).
 
@@ -342,7 +342,15 @@ github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.action
 
 O provider reutilizado é apenas consultado e deve pertencer à mesma conta, ter o emissor correto e aceitar `sts.amazonaws.com`. Ele não será removido pelo destroy deste projeto. Um provider criado pelo próprio Terraform pertence ao ciclo de vida desta infraestrutura.
 
-A confiança usa `StringEquals` para audience e subject exatos: `repo:1GustavoBorgonha1/aplicacao_tb_fnl_si:environment:production`. Forks e outros environments não são autorizados pelo padrão. Como o job usa um environment, o subject não contém a branch; a restrição à `main` precisa ser feita no GitHub. Ao alterar repositório/environment, mantenha os nomes coerentes com o workflow real. O workflow atual usa namespace `marmifit`; mantenha esse `project_name` ou peça ao responsável pelo workflow para ajustar o namespace.
+O parametro `github_repository_ids` informa os IDs imutaveis consultados no GitHub. Para este projeto, use:
+
+```hcl
+github_repository_ids = { owner_id = "176631057", repository_id = "1462042647" }
+```
+
+Ao trocar de repositorio, consulte os IDs de `owner.id` e `id` em `GET /repos/OWNER/REPO`, e confira `GET /repos/OWNER/REPO/actions/oidc/customization/sub`. Use `github_repository_ids = null` somente se o repositorio realmente utilizar o subject legado sem IDs. Os nomes em `github_repository` e os IDs precisam pertencer ao mesmo repositorio; o Terraform nao consulta a API GitHub durante o apply.
+
+A confiança usa `StringEquals` para audience e subject exatos: `repo:1GustavoBorgonha1@176631057/aplicacao_tb_fnl_si@1462042647:environment:production`. Forks e outros environments não são autorizados pelo padrão. Como o job usa um environment, o subject não contém a branch; a restrição à `main` precisa ser feita no GitHub. Ao alterar repositório/environment, mantenha os nomes coerentes com o workflow real. O workflow atual usa namespace `marmifit`; mantenha esse `project_name` ou peça ao responsável pelo workflow para ajustar o namespace.
 
 **2. Provisionar e concluir o primeiro deploy:** gere e revise um plano novo e execute o apply, conforme a seção de provisionamento. Depois consulte:
 
@@ -365,7 +373,7 @@ terraform output -raw master_instance_id
 
 Não são secrets de credenciais: o login usa um token OIDC temporário. A pipeline ainda depende das configurações de build, publicação das imagens e verificações já existentes no repositório. Quem não tem permissão de escrita/administração precisa solicitar essa configuração ao responsável pelo projeto. Se o master for recriado, atualize `K3S_MASTER_INSTANCE_ID` com o novo output.
 
-**4. Validar a integração:** após um merge na `main` com os jobs anteriores aprovados, conferir no Actions o job Deploy e seu comando SSM. O job deve assumir a role, executar `kubectl set image` nos deployments backend/frontend e acompanhar os rollouts. Este teste precisa da infraestrutura provisionada; os testes locais simulados não comprovam autenticação real no GitHub/AWS.
+**4. Validar a integração:** após um merge na `main` com os jobs anteriores aprovados, conferir no Actions o job Deploy e seu comando SSM. O job deve assumir a role, executar `kubectl set image` com `latest`, reiniciar os deployments backend/frontend e acompanhar os rollouts. Este teste precisa da infraestrutura provisionada; os testes locais simulados não comprovam autenticação real no GitHub/AWS.
 
 A role permite somente `ssm:SendCommand` para o ARN do master e para o documento AWS `AWS-RunShellScript`, além de `ssm:GetCommandInvocation` com `Resource = "*"`, exigido por essa ação sem suporte a ARN. Não concede administração de EC2, IAM, RDS, S3 ou acesso direto aos parâmetros. O documento permite executar shell no master; por isso a confiança no repositório e a proteção do environment são parte da configuração do deploy.
 
@@ -438,3 +446,12 @@ git rm --cached -- infra/terraform/infra.tfplan
 Substitua o caminho pelo plano que estiver rastreado. Versione código, exemplos e `.terraform.lock.hcl` dos providers; esse lockfile não é um plano. Guarde configurações reais, estados e planos fora do Git.
 
 Para conferir o código sem provisionar, use `terraform validate` e `terraform test` após inicializar os providers. Os testes são simulados e não substituem a validação real da aplicação na AWS.
+
+
+## Preparacao do CI antes do provisionamento
+
+PRs vindos de fork nao recebem os secrets do repositorio original. O job SonarQube continua exigindo seus secrets e nao pula o Quality Gate. Para executar a validacao completa das alteracoes confiaveis, use uma branch e PR internos no repositorio original. Nao exponha secrets a codigo de forks.
+
+O job de infraestrutura usa Terraform 1.17.2 e executa `fmt`, `init -backend=false`, `validate` e `test` com providers simulados. O SonarQube inclui `infra/terraform` no escopo e normaliza quebras de linha da variavel `SONAR_ORGANIZATION`.
+
+Antes de aplicar, use a versao revisada desta pasta, atualize seu tfvars real e confira o bucket do backend apos a limpeza dos recursos antigos. Gere um plano novo; nao reutilize planos anteriores. Mantenha `DEPLOY_ENABLED=false` ate concluir o primeiro deploy, conferir os outputs AWS e preencher as variaveis Actions.

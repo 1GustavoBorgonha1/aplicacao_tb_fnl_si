@@ -32,8 +32,12 @@ kubectl -n marmifit get pods -o wide      # no master: réplicas espalhadas pelo
 - Entre com o admin e **troque a senha em "Minha conta"** (a senha inicial esteve no comando do Secret — risco R11).
 
 ## 5. Pipeline (deploys seguintes)
-GitHub Actions: testes → SonarQube (Quality Gate) + `npm audit` → build e push no Docker Hub (tag = SHA do commit) → deploy por **SSM Run Command** no master (`kubectl set image` + `rollout status`), autenticado por **OIDC** (ADR-15). O deploy só roda na `main`, com `vars.DEPLOY_ENABLED=true` e aprovação no environment `production`.
-Rollback: `kubectl -n marmifit rollout undo deployment/backend` (e `frontend`).
+GitHub Actions: testes → SonarQube (Quality Gate) + `npm audit` → build e push no Docker Hub (tags SHA e `latest`) → deploy por **SSM Run Command** no master (`kubectl set image` com `latest` + `rollout restart` + `rollout status`), autenticado por **OIDC** (ADR-15). O deploy só roda na `main`, com `vars.DEPLOY_ENABLED=true` e aprovação no environment `production`.
+Como `latest` e mutavel, `rollout undo` sozinho nao garante recuperar a imagem anterior. Para rollback, aplique uma tag SHA ou digest anterior ainda disponivel, conforme o README Terraform; isso nao desfaz migrations. O workflow usa `latest` nos deploys seguintes.
+
+Antes do primeiro apply, mantenha `DEPLOY_ENABLED=false` e prepare o environment `production`, restrito a `main`. Confira o subject OIDC com IDs imutaveis e o parametro `github_repository_ids` descritos em `infra/terraform/README.md`. Apos provisionar, configure `AWS_REGION=us-east-2`, `AWS_DEPLOY_ROLE_ARN` e `K3S_MASTER_INSTANCE_ID` com os outputs, valide a aplicacao e somente entao habilite `DEPLOY_ENABLED=true`.
+
+O bucket de estado deve existir antes do `terraform init`: siga o bootstrap e os comandos Windows/PowerShell do README Terraform. O apply inicial executa um script PowerShell local; os blocos Bash deste runbook sao destinados principalmente ao master Linux.
 
 ## 6. Checklist pós-deploy
 ```bash

@@ -202,6 +202,24 @@ variable "github_repository" {
     error_message = "Informe um repositorio especifico no formato dono/repositorio, sem curingas."
   }
 }
+variable "github_repository_ids" {
+  description = "IDs imutaveis do dono e repositorio, consultados na API GitHub. Null usa o subject legado, apenas para repositorios que ainda adotem esse formato."
+  type = object({
+    owner_id      = string
+    repository_id = string
+  })
+  default = {
+    owner_id      = "176631057"
+    repository_id = "1462042647"
+  }
+  validation {
+    condition = var.github_repository_ids == null ? true : (
+      can(regex("^[1-9][0-9]*$", var.github_repository_ids.owner_id)) &&
+      can(regex("^[1-9][0-9]*$", var.github_repository_ids.repository_id))
+    )
+    error_message = "Informe IDs numericos positivos do dono e repositorio, ou null para subject legado."
+  }
+}
 variable "github_environment" {
   description = "Environment do job GitHub Actions; restrinja suas branches a main nas configuracoes do GitHub."
   type        = string
