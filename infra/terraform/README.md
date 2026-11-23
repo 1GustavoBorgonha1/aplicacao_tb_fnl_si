@@ -131,8 +131,8 @@ Use **o mesmo bucket** no backend e no tfvars; o backend não lê essas variáve
 As imagens configuradas são:
 
 ```hcl
-backend_image  = "gustavoborgonha/marmifit-backend:10a771b00532caff63ee1d94218bafaea9636f3b"
-frontend_image = "gustavoborgonha/marmifit-frontend:10a771b00532caff63ee1d94218bafaea9636f3b"
+backend_image  = "gustavoborgonha/marmifit-backend:33bf5f9b9e0cf3aa8650a55b69857fea30524af5"
+frontend_image = "gustavoborgonha/marmifit-frontend:33bf5f9b9e0cf3aa8650a55b69857fea30524af5"
 ```
 
 Use tags de versão ou digest, sem `latest`. `backend_environment = {}` também é válido: o log padrão da aplicação é `info`. Esse mapa aceita apenas configurações não sensíveis; conexão, segredos, TLS e dados do S3 são fornecidos pelo Terraform.
