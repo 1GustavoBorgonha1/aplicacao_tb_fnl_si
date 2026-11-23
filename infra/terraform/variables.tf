@@ -176,3 +176,8 @@ variable "github_repository" {
   type        = string
   default     = "1GustavoBorgonha1/aplicacao_tb_fnl_si"
 }
+variable "worker_health_check_grace_seconds" {
+  description = "Tempo para um worker novo entrar no K3s e receber os pods antes de o ALB avaliar a saude."
+  type        = number
+  default     = 1200
+}

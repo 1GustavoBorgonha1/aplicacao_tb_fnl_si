@@ -19,8 +19,8 @@ variables {
 run "minimal_private_architecture" {
   command = plan
   assert {
-    condition     = length(aws_subnet.public) == 2 && length(aws_subnet.private) == 2 && length(aws_instance.worker) == 3 && !aws_instance.master.associate_public_ip_address && !one(aws_launch_template.worker.network_interfaces).associate_public_ip_address
-    error_message = "A rede deve manter tres workers e todos os nos privados."
+    condition     = length(aws_subnet.public) == 2 && length(aws_subnet.private) == 2 && aws_autoscaling_group.worker.desired_capacity == 3 && aws_autoscaling_group.worker.min_size == 3 && aws_autoscaling_group.worker.max_size == 3 && aws_autoscaling_group.worker.health_check_type == "ELB" && !aws_instance.master.associate_public_ip_address && !one(aws_launch_template.worker.network_interfaces).associate_public_ip_address
+    error_message = "A rede deve manter tres workers (Auto Scaling Group) e todos os nos privados."
   }
   assert {
     condition     = aws_db_instance.main.engine == "postgres" && aws_db_instance.main.port == 5432 && !aws_db_instance.main.publicly_accessible && !aws_db_instance.main.multi_az && aws_db_instance.main.storage_encrypted
@@ -144,8 +144,8 @@ run "worker_network_has_single_configuration_source" {
     values          = { id = "sg-0123456789abcdef1" }
   }
   assert {
-    condition     = length(aws_launch_template.worker.network_interfaces) == 1 && one(aws_launch_template.worker.network_interfaces).device_index == 0 && one(aws_launch_template.worker.network_interfaces).subnet_id == aws_subnet.private[0].id && !one(aws_launch_template.worker.network_interfaces).associate_public_ip_address && one(aws_launch_template.worker.network_interfaces).delete_on_termination
-    error_message = "Workers devem herdar interface primaria privada do template, sem IP publico."
+    condition     = length(aws_launch_template.worker.network_interfaces) == 1 && one(aws_launch_template.worker.network_interfaces).device_index == 0 && contains(tolist(aws_autoscaling_group.worker.vpc_zone_identifier), aws_subnet.private[0].id) && !one(aws_launch_template.worker.network_interfaces).associate_public_ip_address && one(aws_launch_template.worker.network_interfaces).delete_on_termination
+    error_message = "Workers devem ficar na subnet privada (via ASG) com interface primaria do template, sem IP publico."
   }
   assert {
     condition     = length(one(aws_launch_template.worker.network_interfaces).security_groups) == 2 && aws_launch_template.worker.vpc_security_group_ids == null

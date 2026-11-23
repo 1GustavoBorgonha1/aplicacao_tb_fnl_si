@@ -1,7 +1,7 @@
 output "app_url" { value = "http://${aws_lb.app.dns_name}" }
 output "master_instance_id" { value = aws_instance.master.id }
 output "github_deploy_role_arn" { value = aws_iam_role.github_deploy.arn }
-output "worker_instance_ids" { value = aws_instance.worker[*].id }
+output "worker_autoscaling_group" { value = aws_autoscaling_group.worker.name }
 output "rds_endpoint" { value = aws_db_instance.main.endpoint }
 output "images_bucket" { value = aws_s3_bucket.images.id }
 output "images_base_url" { value = "https://${aws_s3_bucket.images.bucket_regional_domain_name}" }

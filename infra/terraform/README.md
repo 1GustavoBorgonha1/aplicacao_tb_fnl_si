@@ -228,6 +228,9 @@ sudo k3s kubectl get pods -n marmifit -o wide
 sudo k3s kubectl logs -n marmifit deployment/backend --tail=100
 ```
 
+### Worker substituído pelo Auto Scaling Group
+Se um worker falhar no health check do ALB, o Auto Scaling Group cria outro e ele entra no cluster sozinho. O nó antigo fica `NotReady` no K3s; remova-o no master com `sudo k3s kubectl get nodes` e `sudo k3s kubectl delete node <nome>`.
+
 ### Retomar um apply interrompido
 
 Os recursos criados antes da falha permanecem registrados no estado. Depois de corrigir o código, gere um plano novo e revise-o antes de aplicar:
