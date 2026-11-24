@@ -2,6 +2,16 @@
 
 Esta pasta deve ficar em **`infra/terraform/`** no repositório `aplicacao_tb_fnl_si`. O Terraform provisiona a infraestrutura e executa o deploy das imagens públicas já existentes. Os comandos abaixo usam **Windows e PowerShell**. Se o terminal mostrar apenas `C:\...>` (CMD), digite `powershell` para seguir os exemplos. Comandos com `$variavel`, `Copy-Item` e `Set-Location` são específicos do PowerShell; a consulta da senha também tem uma alternativa em CMD abaixo.
 
+**Após o apply: faça o primeiro login e troque imediatamente a senha inicial do administrador.** O procedimento completo está na [seção 6 — Primeiro acesso e troca da senha do admin](#6-primeiro-acesso-e-troca-da-senha-do-admin).
+
+### Como copiar os comandos no Windows
+
+- Execute os comandos Terraform principais na pasta `infra/terraform` do checkout atualizado. Uma pasta antiga com o mesmo nome não recebe as mudanças do Git automaticamente.
+- Copie somente o comando, sem o prompt `PS C:\...>` e sem acrescentar `\` no final. Os exemplos usam uma linha por comando; `\` não é continuação de linha no PowerShell.
+- Preserve o `$` nas variáveis, como `$adminParameter`. `adminParameter = ...` sem `$` não cria uma variável PowerShell.
+- Os argumentos Terraform com `=` aparecem entre aspas para evitar problemas de interpretação pelo PowerShell. Não retire as aspas dos exemplos.
+- Substitua `projeto-aula` pelo seu perfil real. Ao usar outra região, ajuste também `--region` nos comandos AWS.
+
 ## Infraestrutura
 
 ```text
@@ -130,19 +140,24 @@ A partir da raiz do repositório da aplicação:
 
 ```powershell
 Set-Location infra/terraform
-Copy-Item bootstrap/terraform.tfvars.example bootstrap/terraform.tfvars
+if (-not (Test-Path bootstrap/terraform.tfvars)) {
+    Copy-Item bootstrap/terraform.tfvars.example bootstrap/terraform.tfvars
+}
 ```
 
 Edite `bootstrap/terraform.tfvars` para informar `aws_profile = "projeto-aula"` e manter `aws_region = "us-east-2"`. Em seguida:
 
 ```powershell
-terraform -chdir=bootstrap init
-terraform -chdir=bootstrap plan
-terraform -chdir=bootstrap apply
-terraform -chdir=bootstrap output -raw state_bucket_name
+terraform "-chdir=bootstrap" init
+terraform "-chdir=bootstrap" plan "-out=bootstrap.tfplan"
+terraform "-chdir=bootstrap" show bootstrap.tfplan
+terraform "-chdir=bootstrap" apply bootstrap.tfplan
+terraform "-chdir=bootstrap" output -raw state_bucket_name
 ```
 
 Execute essa etapa somente uma vez. Se já criou o bucket, reutilize-o. O bootstrap tem estado **local**: guarde `bootstrap/terraform.tfstate` em local seguro, fora do Git. O bucket tem proteção contra destruição e permanece após remover a infraestrutura principal.
+
+Execute esses comandos a partir de `infra/terraform`: `-chdir=bootstrap` seleciona a subpasta antes do subcomando `plan` ou `apply`. O plano será salvo em `bootstrap/bootstrap.tfplan`. Revise o resultado de `show` antes do apply. Depois copie o nome retornado por `state_bucket_name` para **dois lugares**: `bucket` no `backend.hcl` e `state_bucket_name` no tfvars principal. Se o bucket antigo foi excluído fora do Terraform, confira o estado do bootstrap antes de tentar reutilizá-lo; o nome antigo sozinho não comprova que o bucket existe.
 
 ## 4. Preencher as configurações
 
@@ -193,9 +208,9 @@ O padrão usa `latest` para backend e frontend; tags de versão ou digest també
 Na pasta `infra/terraform`:
 
 ```powershell
-terraform init -reconfigure -backend-config=backend.hcl
+terraform init -reconfigure "-backend-config=backend.hcl"
 terraform validate
-terraform plan -out=infra.tfplan
+terraform plan "-out=infra.tfplan"
 terraform apply infra.tfplan
 terraform output -raw app_url
 ```
@@ -212,7 +227,7 @@ Se a etapa SSM falhar, os recursos já criados permanecem na AWS. Consulte o com
 
 ```powershell
 # Gerar o plano; este comando ainda nao altera os recursos.
-terraform plan -out=infra.tfplan
+terraform plan "-out=infra.tfplan"
 
 # Revisar o arquivo gerado no terminal.
 terraform show infra.tfplan
@@ -225,41 +240,84 @@ O `.tfplan` é um arquivo binário gerado, pode conter segredos e deve ficar som
 
 Depois de alterar o código, os parâmetros ou após uma falha, gere um novo plano. Não copie planos de outra máquina ou conta e não reutilize um plano antigo após mudanças no estado.
 
-## 6. Primeiro acesso
+## 6. Primeiro acesso e troca da senha do admin
 
-Abra a URL de `app_url` e teste `/api/health`, que deve retornar `{"status":"ok"}`. Use o `admin_email` configurado e consulte a senha inicial no seu terminal privado:
+**A primeira ação após entrar na aplicação deve ser trocar a senha inicial do administrador.** Ter o apply concluído não significa que essa troca foi feita: ela é realizada por você na interface da aplicação.
 
-**PowerShell:**
+### 6.1 Conferir a aplicação e o e-mail do administrador
+
+Na pasta `infra/terraform`, com o backend inicializado, consulte:
+
+```powershell
+terraform output -raw app_url
+terraform output -raw admin_email
+```
+
+Abra a URL retornada pelo primeiro comando no navegador. Acessar `<app_url>/api/health` deve retornar `{"status":"ok"}`. O segundo comando mostra o e-mail configurado em `admin_email` no tfvars. Use esse e-mail para o login da aplicação, não o usuário do SSO AWS nem o usuário do PostgreSQL.
+
+### 6.2 Consultar a senha inicial no PowerShell
+
+O Terraform gera a senha inicial e a guarda como SecureString no **SSM Parameter Store**, não no Secrets Manager. O output abaixo retorna somente o **nome do parâmetro**, não a senha. Execute as duas linhas em sequência, na mesma janela PowerShell:
 
 ```powershell
 $adminParameter = terraform output -raw admin_password_parameter
-aws ssm get-parameter --profile projeto-aula --region us-east-2 --name $adminParameter --with-decryption --query Parameter.Value --output text
+aws ssm get-parameter --profile projeto-aula --region us-east-2 --name "$adminParameter" --with-decryption --query Parameter.Value --output text
 ```
 
-**CMD (Prompt de Comando):** consulte primeiro o nome do parâmetro:
+A primeira linha começa com **`$adminParameter`**, incluindo o `$`. Se ela falhar, pare e corrija antes de executar a segunda. Para conferir o nome armazenado, execute `$adminParameter`: deve aparecer um caminho como `/marmifit/admin-password`, e não uma senha. A segunda linha descriptografa o valor e mostra a **senha inicial** no terminal privado. Não acrescente `\` ao final das linhas.
 
-```cmd
+Se preferir evitar variáveis, consulte primeiro o nome:
+
+```powershell
 terraform output -raw admin_password_parameter
 ```
 
-Copie o resultado e use em `--name`. Se retornar `/marmifit/admin-password`, execute:
+Depois copie o resultado completo para `--name`. Se o resultado for `/marmifit/admin-password`, execute:
 
-```cmd
+```powershell
 aws ssm get-parameter --profile projeto-aula --region us-east-2 --name "/marmifit/admin-password" --with-decryption --query Parameter.Value --output text
 ```
 
-Substitua `projeto-aula` pelo seu perfil real e o caminho pelo resultado do output, caso tenha outro nome de projeto. Não use `$adminParameter` no CMD: ele seria enviado como texto literal.
+Essa alternativa com o caminho entre aspas também funciona no **CMD**. Não use a atribuição `$adminParameter = ...` no CMD. O caminho muda se `project_name` for diferente: use sempre o output real. Não existe o comando `aws sts get-secrets`; o STS é usado aqui para conferir a identidade AWS, e a leitura da senha usa `aws ssm get-parameter`.
 
-Para consultar o e-mail e a URL, em qualquer um dos terminais:
+### 6.3 Entrar e trocar a senha pela aplicação
 
-```text
-terraform output -raw admin_email
-terraform output -raw app_url
-```
+1. Abra a URL pública retornada por `app_url` e clique em **Entrar**.
+2. Faça login com o e-mail do output `admin_email` e a senha inicial consultada no SSM.
+3. Na barra superior, clique no **nome do usuário**; em telas menores, o item aparece como **Conta**. Esse link tem o título **Minha conta** e abre a página `/conta`. Se preferir, após o login acesse `<app_url>/conta` diretamente.
+4. Na seção **Trocar senha**, preencha **Senha atual** com a senha usada no login, **Nova senha** com a senha que deseja usar e **Confirmar nova senha** com o mesmo valor da nova senha.
+5. Use uma senha diferente da atual, com **8 a 72 caracteres**, contendo pelo menos uma letra e um número. Guarde a nova senha em local seguro.
+6. Clique em **Trocar senha** e aguarde a mensagem **“Senha alterada! As outras sessões abertas foram encerradas.”** A sessão atual recebe um novo token; os tokens anteriores são invalidados.
+7. Clique em **Sair** e confirme um novo login com o mesmo e-mail e a **nova senha**.
 
-Troque a senha em **Minha conta** após o login. O parâmetro guarda a senha inicial; ele não acompanha alterações feitas pela interface. Usuários da aplicação, usuário do PostgreSQL e perfil SSO são acessos separados. O JWT é persistente e compartilhado entre as réplicas.
+Não é necessário executar Terraform, reiniciar pods ou alterar o banco manualmente para trocar a senha. A aplicação verifica a senha atual e salva o hash da nova senha no PostgreSQL.
 
-Não publique senhas, tokens, plans ou estados: o estado Terraform contém segredos, mesmo quando marcados como sensíveis.
+### 6.4 O que acontece com a senha guardada no SSM
+
+O parâmetro `/marmifit/admin-password` continua guardando a **senha inicial do bootstrap**; ele não acompanha a troca feita na interface. Depois da troca, consultar o SSM novamente não recupera a nova senha. Use a nova senha nos logins seguintes.
+
+Editar o parâmetro SSM ou o Secret `backend-secret` não redefine a senha de um administrador já existente: essas configurações são usadas para criar o usuário inicialmente. Não use um novo `terraform apply` como procedimento de recuperação de senha. Se esquecer a senha atual, será necessário um procedimento específico de recuperação; este IaC não implementa redefinição automática.
+
+Usuários da aplicação, usuário do PostgreSQL e perfil SSO são acessos separados. A troca da senha do admin não altera a senha do RDS, o perfil AWS nem o segredo JWT compartilhado entre as réplicas; a aplicação invalida os tokens antigos desse usuário por sua versão de token.
+
+### 6.5 Resolver os erros mais comuns
+
+| Erro ou situação | Como resolver |
+|---|---|
+| `adminParameter não é reconhecido` | Faltou o `$`: execute `$adminParameter = terraform output -raw admin_password_parameter` no PowerShell. |
+| `argument --name: expected one argument` | A variável ficou vazia. Execute e confira a primeira linha antes da leitura no SSM, ou use o caminho literal retornado pelo output. |
+| Erro de validação do nome do parâmetro | Use o caminho real retornado pelo Terraform. No CMD, não passe `$adminParameter` como texto. |
+| Sessão SSO expirada | Execute `aws sso login --profile projeto-aula` e tente novamente. |
+| `AccessDenied` ao ler o parâmetro | Solicite ao administrador AWS permissão para consultar e descriptografar esse parâmetro. Não é uma permissão da conta admin da aplicação. |
+| `ParameterNotFound` | Confira perfil, região e caminho do output; confirme que está usando o estado da infraestrutura provisionada. |
+| Senha inicial do SSM não permite mais login | Se já foi trocada na aplicação, use a nova senha; o SSM continua mostrando a inicial. |
+| Senha atual incorreta ao trocar | Informe a senha que permite o login atual, sem espaços acidentais ao copiar. Confira também se a confirmação é igual à nova senha. |
+
+Não publique senhas, tokens, planos ou estados: o estado Terraform contém segredos, mesmo quando marcados como sensíveis. Não salve a senha real neste README nem em prints ou logs compartilhados.
+
+### 6.6 Só depois habilitar o deploy automático
+
+Antes de alterar `DEPLOY_ENABLED` para `true`, confirme: aplicação acessível, `/api/health` respondendo, senha inicial do admin trocada, variáveis AWS preenchidas e environment `production` configurado conforme a seção seguinte. A troca de senha do administrador é feita pela interface e não depende da pipeline.
 
 ## 7. Atualizar a aplicação
 
@@ -281,7 +339,7 @@ Esse procedimento recria gradualmente os pods e busca a versão apontada por `la
 Se precisar mudar o registro, tag ou digest declarado, altere `backend_image` e/ou `frontend_image` no tfvars e aplique um plano novo:
 
 ```powershell
-terraform plan -out=update.tfplan
+terraform plan "-out=update.tfplan"
 terraform apply update.tfplan
 ```
 
@@ -304,7 +362,7 @@ Os recursos criados antes da falha permanecem registrados no estado. Depois de c
 
 ```powershell
 terraform validate
-terraform plan -out=retomada.tfplan
+terraform plan "-out=retomada.tfplan"
 terraform apply retomada.tfplan
 ```
 
@@ -362,16 +420,20 @@ terraform output -raw master_instance_id
 **3. Configurar o GitHub, com ajuda de um administrador do repositório:**
 
 - Em **Settings → Environments**, criar/conferir `production` e configurar **Deployment branches and tags** para permitir somente a branch `main`. Se forem exigidos reviewers, cada deploy aguardará essa aprovação.
-- Em **Settings → Secrets and variables → Actions → Variables** (ou nas variáveis do environment `production`), preencher:
+- Em **Settings → Secrets and variables → Actions → Variables**, preencher como variáveis do **repositório**. O workflow usa `vars`, não `secrets`, para esses valores; mantenha especialmente `DEPLOY_ENABLED` no nível do repositório, pois ele é usado na condição que habilita o job:
 
 | Variável | Valor |
 |---|---|
 | `AWS_REGION` | `us-east-2` |
-| `AWS_DEPLOY_ROLE_ARN` | Output `github_deploy_role_arn` |
+| `AWS_DEPLOY_ROLE_ARN` | ARN completo do output `github_deploy_role_arn`, incluindo `arn:aws:iam::...:role/...` |
 | `K3S_MASTER_INSTANCE_ID` | Output `master_instance_id` |
-| `DEPLOY_ENABLED` | `true`, somente após a infraestrutura e o primeiro deploy estarem prontos |
+| `DEPLOY_ENABLED` | `false` durante a preparação; `true` somente após validar o primeiro deploy, trocar a senha inicial do admin e preencher os outputs |
 
 Não são secrets de credenciais: o login usa um token OIDC temporário. A pipeline ainda depende das configurações de build, publicação das imagens e verificações já existentes no repositório. Quem não tem permissão de escrita/administração precisa solicitar essa configuração ao responsável pelo projeto. Se o master for recriado, atualize `K3S_MASTER_INSTANCE_ID` com o novo output.
+
+Cole os valores sem aspas, espaços extras ou quebras de linha. Os secrets `SONAR_TOKEN`, `SONAR_HOST_URL`, `DOCKERHUB_USERNAME` e `DOCKERHUB_TOKEN` continuam em **Secrets**. A variável `SONAR_ORGANIZATION` fica em **Variables**.
+
+Se não conseguir criar um environment, peça ao proprietário do repositório para criar `production` e permitir somente `main`. Isso não impede o primeiro provisionamento e deploy pelo Terraform; mantenha `DEPLOY_ENABLED=false` enquanto a configuração estiver pendente. As variáveis com ARN da role e ID do master só podem ser preenchidas com os valores reais após o apply.
 
 **4. Validar a integração:** após um merge na `main` com os jobs anteriores aprovados, conferir no Actions o job Deploy e seu comando SSM. O job deve assumir a role, executar `kubectl set image` com `latest`, reiniciar os deployments backend/frontend e acompanhar os rollouts. Este teste precisa da infraestrutura provisionada; os testes locais simulados não comprovam autenticação real no GitHub/AWS.
 
@@ -407,14 +469,14 @@ Os backups automáticos protegem a janela configurada enquanto o banco existe. E
 A remoção exige duas etapas. Primeiro, altere **somente** `db_deletion_protection = false` no seu tfvars, mantenha `db_final_snapshot = true` e aplique essa mudança no banco existente:
 
 ```powershell
-terraform plan -out=desproteger.tfplan
+terraform plan "-out=desproteger.tfplan"
 terraform apply desproteger.tfplan
 ```
 
 Confira que o plano desativa a proteção no RDS. Somente após concluir esse apply, gere e revise o plano de remoção:
 
 ```powershell
-terraform plan -destroy -out=destroy.tfplan
+terraform plan -destroy "-out=destroy.tfplan"
 terraform apply destroy.tfplan
 ```
 
